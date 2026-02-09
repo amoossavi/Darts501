@@ -182,33 +182,10 @@ function getElevenLabsKey() {
   return localStorage.getItem('darts501_elevenlabs_key') || '';
 }
 
-const DEFAULT_VOICE_ID = '1TE7ou3jyxHsyRehUuMB';
+const DEFAULT_VOICE_ID = '0rYPA6cLftSM7CCEM9yb';
 
 function getElevenLabsVoiceId() {
-  return localStorage.getItem('darts501_elevenlabs_voice') || DEFAULT_VOICE_ID;
-}
-
-async function fetchVoices(apiKey) {
-  const res = await fetch('https://api.elevenlabs.io/v1/voices', {
-    headers: { 'xi-api-key': apiKey },
-  });
-  if (!res.ok) throw new Error('Failed to fetch voices');
-  const data = await res.json();
-  return data.voices || [];
-}
-
-function populateVoiceDropdown(voices) {
-  const select = document.getElementById('voice-select');
-  select.innerHTML = '<option value="">-- Select a voice --</option>';
-  const savedVoice = getElevenLabsVoiceId();
-  voices.forEach(v => {
-    const opt = document.createElement('option');
-    opt.value = v.voice_id;
-    opt.textContent = v.name;
-    if (v.voice_id === savedVoice) opt.selected = true;
-    select.appendChild(opt);
-  });
-  select.parentElement.style.display = '';
+  return DEFAULT_VOICE_ID;
 }
 
 // Speech queue — each item plays only after the previous finishes
@@ -354,12 +331,12 @@ function announceScore(points, busted) {
 function announceCheckout(player) {
   const checkout = getCheckoutSuggestion(player.score);
   if (checkout) {
-    speak(player.name + ' requires ' + numberToWords(player.score));
+    speak(player.name + ' you require ' + numberToWords(player.score));
   }
 }
 
 function announceWinner(playerName) {
-  speak(playerName + ' wins! Game shot!');
+  speak(playerName + ' wins!');
 }
 
 // ============================================================
@@ -628,10 +605,10 @@ function submitScore(points) {
     announceScore(points, true);
     player.visits.push({ score: points, busted: true });
     player.darts += 3;
+    announceCheckout(player);
     switchPlayer();
     render();
     syncGameToFirestore();
-    announceCheckout(getCurrentPlayer());
     focusScoreInput();
     return;
   }
@@ -652,10 +629,10 @@ function submitScore(points) {
     return;
   }
 
+  announceCheckout(player);
   switchPlayer();
   render();
   syncGameToFirestore();
-  announceTurn(getCurrentPlayer().name);
   focusScoreInput();
 }
 
@@ -928,6 +905,7 @@ function init() {
       showMessage('Enter a valid number');
       return;
     }
+    input.value = '';
     submitScore(val);
   });
 
@@ -989,8 +967,7 @@ function init() {
   });
   document.getElementById('leave-room-btn').addEventListener('click', leaveRoom);
 
-  // Voice settings — clear old voice selection so default is used
-  localStorage.removeItem('darts501_elevenlabs_voice');
+  // Voice settings
   audioCache.clear();
 
   const savedKey = getElevenLabsKey();
@@ -998,8 +975,6 @@ function init() {
     document.getElementById('elevenlabs-key').value = savedKey;
     document.getElementById('voice-status').textContent = 'Key saved';
     document.getElementById('voice-status').classList.add('status-ok');
-    // Load voices for saved key
-    fetchVoices(savedKey).then(populateVoiceDropdown).catch(() => {});
   }
 
   document.getElementById('settings-toggle').addEventListener('click', () => {
@@ -1014,55 +989,33 @@ function init() {
     const status = document.getElementById('voice-status');
     if (key) {
       localStorage.setItem('darts501_elevenlabs_key', key);
-      status.textContent = 'Loading voices...';
-      status.classList.remove('status-ok', 'status-err');
-      fetchVoices(key).then(voices => {
-        populateVoiceDropdown(voices);
-        status.textContent = 'Key saved — pick a voice below';
-        status.classList.add('status-ok');
-      }).catch(() => {
-        status.textContent = 'Invalid key — check and try again';
-        status.classList.add('status-err');
-      });
+      audioCache.clear();
+      status.textContent = 'Key saved';
+      status.classList.remove('status-err');
+      status.classList.add('status-ok');
     } else {
       localStorage.removeItem('darts501_elevenlabs_key');
-      localStorage.removeItem('darts501_elevenlabs_voice');
-      document.getElementById('voice-select').parentElement.style.display = 'none';
       status.textContent = 'Key removed — using browser voice';
       status.classList.remove('status-ok', 'status-err');
-    }
-  });
-
-  document.getElementById('voice-select').addEventListener('change', (e) => {
-    const voiceId = e.target.value;
-    if (voiceId) {
-      localStorage.setItem('darts501_elevenlabs_voice', voiceId);
-      audioCache.clear();
-    } else {
-      localStorage.removeItem('darts501_elevenlabs_voice');
     }
   });
 
   document.getElementById('test-voice-btn').addEventListener('click', () => {
     const status = document.getElementById('voice-status');
     const key = document.getElementById('elevenlabs-key').value.trim();
-    const voiceId = document.getElementById('voice-select').value;
-    if (key && voiceId) {
+    if (key) {
       localStorage.setItem('darts501_elevenlabs_key', key);
       status.textContent = 'Testing...';
       status.classList.remove('status-ok', 'status-err');
-      speakElevenLabs('One hundred and eighty!', key, voiceId).then(() => {
+      speakElevenLabs('One hundred and eighty!', key, DEFAULT_VOICE_ID).then(() => {
         status.textContent = 'Working!';
         status.classList.add('status-ok');
       }).catch(() => {
         status.textContent = 'Error — check your key';
         status.classList.add('status-err');
       });
-    } else if (key && !voiceId) {
-      status.textContent = 'Select a voice first';
-      status.classList.add('status-err');
     } else {
-      speakBrowser('One hundred and eighty!');
+      playBrowser('One hundred and eighty!');
       status.textContent = 'Browser voice (no API key)';
     }
   });
