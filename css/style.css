@@ -471,7 +471,7 @@ body {
 
 .scoreboard {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -567,6 +567,17 @@ body {
   outline: none;
   border-color: var(--green);
   box-shadow: 0 0 0 3px var(--green-glow);
+}
+
+/* Hide number input spin buttons */
+.score-input-row input::-webkit-outer-spin-button,
+.score-input-row input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.score-input-row input[type=number] {
+  -moz-appearance: textfield;
 }
 
 .score-input-row .btn {
@@ -758,7 +769,7 @@ body {
 
 .final-stats {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-bottom: 24px;
 }
@@ -882,19 +893,11 @@ body {
   }
 
   .player-score {
-    font-size: 2rem;
+    font-size: 2.5rem;
   }
 
   .player-panel {
-    padding: 10px 6px;
-  }
-
-  .player-name {
-    font-size: 0.8rem;
-  }
-
-  .player-stats {
-    font-size: 0.7rem;
+    padding: 14px 10px;
   }
 
   .score-input-row input {

@@ -31,10 +31,6 @@
         <label for="player2-name">Player 2</label>
         <input type="text" id="player2-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
       </div>
-      <div class="input-group">
-        <label for="player3-name">Player 3</label>
-        <input type="text" id="player3-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
-      </div>
       <button id="start-btn" class="btn btn-primary">Start Game</button>
     </div>
 
@@ -134,40 +130,16 @@
         </div>
       </div>
 
-      <!-- Player 3 -->
-      <div id="player3-panel" class="player-panel">
-        <div class="player-name" id="p3-name"></div>
-        <div class="player-score" id="p3-score">501</div>
-        <div class="player-stats">
-          Darts: <strong id="p3-darts">0</strong><br>
-          Avg: <strong id="p3-average">0.0</strong><br>
-          Best: <strong id="p3-highest">0</strong>
-        </div>
-        <div class="checkout-hint" style="display:none">
-          <span id="p3-checkout">-</span>
-        </div>
-      </div>
     </div>
 
     <!-- Score Input -->
     <div class="input-section">
       <div class="score-input-row">
-        <input type="number" id="score-input" placeholder="Score" min="0" max="180" inputmode="numeric">
+        <input type="number" id="score-input" placeholder="Score" min="0" max="180" inputmode="numeric" autocomplete="off">
         <button id="submit-btn" class="btn btn-submit">OK</button>
       </div>
       <div class="action-row">
         <button id="undo-btn" class="btn btn-undo">Undo</button>
-      </div>
-      <div class="quick-scores">
-        <button class="quick-score" data-score="0">0</button>
-        <button class="quick-score" data-score="26">26</button>
-        <button class="quick-score" data-score="41">41</button>
-        <button class="quick-score" data-score="45">45</button>
-        <button class="quick-score" data-score="60">60</button>
-        <button class="quick-score" data-score="85">85</button>
-        <button class="quick-score" data-score="100">100</button>
-        <button class="quick-score" data-score="140">140</button>
-        <button class="quick-score" data-score="180">180</button>
       </div>
     </div>
 
@@ -179,9 +151,8 @@
           <thead>
             <tr>
               <th id="hist-p1-name">P1</th>
-              <th id="hist-p2-name">P2</th>
               <th>Rd</th>
-              <th id="hist-p3-name">P3</th>
+              <th id="hist-p2-name">P2</th>
             </tr>
           </thead>
           <tbody id="history-body"></tbody>
@@ -239,25 +210,6 @@
         </div>
       </div>
 
-      <div class="final-stat-card">
-        <h3 id="go-p3-name">Player 3</h3>
-        <div class="stat-row">
-          <span class="stat-label">Final Score</span>
-          <span class="stat-value" id="go-p3-score"></span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Darts</span>
-          <span class="stat-value" id="go-p3-darts"></span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Average</span>
-          <span class="stat-value" id="go-p3-average"></span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Best Visit</span>
-          <span class="stat-value" id="go-p3-highest"></span>
-        </div>
-      </div>
     </div>
 
     <div class="gameover-buttons">

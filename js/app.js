@@ -351,8 +351,11 @@ function announceScore(points, busted) {
   }
 }
 
-function announceTurn(playerName) {
-  speak(playerName + ', you\'re up');
+function announceCheckout(player) {
+  const checkout = getCheckoutSuggestion(player.score);
+  if (checkout) {
+    speak(player.name + ' requires ' + numberToWords(player.score));
+  }
 }
 
 function announceWinner(playerName) {
@@ -570,20 +573,19 @@ function createPlayer(name) {
   };
 }
 
-function startGame(name1, name2, name3) {
+function startGame(name1, name2) {
   game = {
-    players: [createPlayer(name1), createPlayer(name2), createPlayer(name3)],
+    players: [createPlayer(name1), createPlayer(name2)],
     currentPlayer: 0,
     gameOver: false,
     winner: null,
   };
 
-  localStorage.setItem('darts501_playerNames', JSON.stringify([name1, name2, name3]));
+  localStorage.setItem('darts501_playerNames', JSON.stringify([name1, name2]));
 
   showScreen('game-screen');
   document.getElementById('hist-p1-name').textContent = name1;
   document.getElementById('hist-p2-name').textContent = name2;
-  document.getElementById('hist-p3-name').textContent = name3;
 
   if (isOnline) {
     showRoomCodeOnGameScreen();
@@ -629,7 +631,7 @@ function submitScore(points) {
     switchPlayer();
     render();
     syncGameToFirestore();
-    announceTurn(getCurrentPlayer().name);
+    announceCheckout(getCurrentPlayer());
     focusScoreInput();
     return;
   }
@@ -773,44 +775,33 @@ function renderVisitHistory() {
   const tbody = document.getElementById('history-body');
   tbody.innerHTML = '';
 
-  const maxVisits = Math.max(...game.players.map(p => p.visits.length));
+  const maxVisits = Math.max(game.players[0].visits.length, game.players[1].visits.length);
 
   for (let i = 0; i < maxVisits; i++) {
     const row = document.createElement('tr');
 
-    // Player 1
-    const td1 = document.createElement('td');
     const v1 = game.players[0].visits[i];
+    const v2 = game.players[1].visits[i];
+
+    const td1 = document.createElement('td');
     if (v1) {
       td1.textContent = v1.busted ? `${v1.score} (BUST)` : v1.score;
       if (v1.busted) td1.classList.add('bust');
     }
 
-    // Player 2
+    const tdRound = document.createElement('td');
+    tdRound.textContent = i + 1;
+    tdRound.classList.add('round-number');
+
     const td2 = document.createElement('td');
-    const v2 = game.players[1].visits[i];
     if (v2) {
       td2.textContent = v2.busted ? `${v2.score} (BUST)` : v2.score;
       if (v2.busted) td2.classList.add('bust');
     }
 
-    // Round number
-    const tdRound = document.createElement('td');
-    tdRound.textContent = i + 1;
-    tdRound.classList.add('round-number');
-
-    // Player 3
-    const td3 = document.createElement('td');
-    const v3 = game.players[2].visits[i];
-    if (v3) {
-      td3.textContent = v3.busted ? `${v3.score} (BUST)` : v3.score;
-      if (v3.busted) td3.classList.add('bust');
-    }
-
     row.appendChild(td1);
-    row.appendChild(td2);
     row.appendChild(tdRound);
-    row.appendChild(td3);
+    row.appendChild(td2);
     tbody.appendChild(row);
   }
 
@@ -919,7 +910,6 @@ function init() {
     if (saved) {
       document.getElementById('player1-name').value = saved[0] || '';
       document.getElementById('player2-name').value = saved[1] || '';
-      document.getElementById('player3-name').value = saved[2] || '';
     }
   } catch {}
 
@@ -927,8 +917,7 @@ function init() {
   document.getElementById('start-btn').addEventListener('click', () => {
     const name1 = document.getElementById('player1-name').value.trim() || 'Player 1';
     const name2 = document.getElementById('player2-name').value.trim() || 'Player 2';
-    const name3 = document.getElementById('player3-name').value.trim() || 'Player 3';
-    startGame(name1, name2, name3);
+    startGame(name1, name2);
   });
 
   // Submit score
@@ -959,9 +948,6 @@ function init() {
   document.getElementById('player2-name').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') document.getElementById('start-btn').click();
   });
-  document.getElementById('player3-name').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') document.getElementById('start-btn').click();
-  });
 
   // Enter key on API key input saves it
   document.getElementById('elevenlabs-key').addEventListener('keydown', (e) => {
@@ -970,14 +956,6 @@ function init() {
 
   // Undo button
   document.getElementById('undo-btn').addEventListener('click', undoLastThrow);
-
-  // Quick score buttons
-  document.querySelectorAll('.quick-score').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const val = parseInt(btn.dataset.score, 10);
-      submitScore(val);
-    });
-  });
 
   // New game button (back to setup)
   document.getElementById('new-game-btn').addEventListener('click', () => {
@@ -993,7 +971,7 @@ function init() {
   // Rematch button
   document.getElementById('rematch-btn').addEventListener('click', () => {
     if (game) {
-      startGame(game.players[0].name, game.players[1].name, game.players[2].name);
+      startGame(game.players[0].name, game.players[1].name);
     }
   });
 
