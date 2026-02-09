@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Darts 501</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Toast message -->
+  <div id="message"></div>
+
+  <!-- Score Overlay -->
+  <div id="score-overlay">
+    <div id="score-overlay-text"></div>
+  </div>
+
+  <!-- ==================== Setup Screen ==================== -->
+  <div id="setup-screen" class="screen active">
+    <h1 class="app-title">DARTS <span>501</span></h1>
+    <p class="app-subtitle">Double-out scoring</p>
+
+    <div class="setup-card">
+      <h2>Players</h2>
+      <div class="input-group">
+        <label for="player1-name">Player 1</label>
+        <input type="text" id="player1-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
+      </div>
+      <div class="input-group">
+        <label for="player2-name">Player 2</label>
+        <input type="text" id="player2-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
+      </div>
+      <div class="input-group">
+        <label for="player3-name">Player 3</label>
+        <input type="text" id="player3-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
+      </div>
+      <button id="start-btn" class="btn btn-primary">Start Game</button>
+    </div>
+
+    <div class="setup-card" id="online-card">
+      <h2>Online Play</h2>
+      <div class="online-actions">
+        <button id="host-btn" class="btn btn-secondary">Host Game</button>
+        <div class="online-join-row">
+          <input type="text" id="join-code" placeholder="Code" maxlength="4" autocomplete="off">
+          <button id="join-btn" class="btn btn-secondary">Join</button>
+        </div>
+      </div>
+      <div id="room-info" class="room-info" style="display:none">
+        <div class="room-code-label">Room Code</div>
+        <div class="room-code" id="room-code-display"></div>
+        <div class="room-hint">Share this code with other players</div>
+      </div>
+    </div>
+
+    <div class="setup-card">
+      <div class="settings-header" id="settings-toggle">
+        <h2>Voice Settings</h2>
+        <span class="settings-arrow" id="settings-arrow">&#9654;</span>
+      </div>
+      <div id="settings-body" class="settings-body collapsed">
+        <p class="settings-hint">Add an <a href="https://elevenlabs.io" target="_blank" rel="noopener">ElevenLabs</a> API key for natural voice announcements. Free tier available. Without a key, the browser's built-in voice is used.</p>
+        <div class="input-group">
+          <label for="elevenlabs-key">API Key</label>
+          <input type="password" id="elevenlabs-key" placeholder="Enter ElevenLabs API key..." autocomplete="off">
+        </div>
+        <div class="input-group" style="display:none">
+          <label for="voice-select">Voice</label>
+          <select id="voice-select" class="voice-dropdown">
+            <option value="">-- Select a voice --</option>
+          </select>
+        </div>
+        <div class="settings-actions">
+          <button id="save-key-btn" class="btn btn-secondary btn-small">Save</button>
+          <button id="test-voice-btn" class="btn btn-secondary btn-small">Test Voice</button>
+          <span id="voice-status" class="voice-status"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="setup-card history-section">
+      <div class="history-header">
+        <h2>Match History</h2>
+        <button id="clear-history-btn" class="btn btn-secondary btn-small">Clear</button>
+      </div>
+      <div id="match-history"></div>
+    </div>
+  </div>
+
+  <!-- Waiting Overlay (shown when viewer joins before game starts) -->
+  <div id="waiting-overlay" class="waiting-overlay" style="display:none">
+    <div class="waiting-card">
+      <div class="waiting-spinner"></div>
+      <div class="waiting-text">Waiting for host to start...</div>
+      <div class="waiting-room">Room: <strong id="waiting-room-code"></strong></div>
+      <button id="leave-room-btn" class="btn btn-secondary btn-small">Leave Room</button>
+    </div>
+  </div>
+
+  <!-- ==================== Game Screen ==================== -->
+  <div id="game-screen" class="screen">
+    <div id="game-room-info" class="game-room-info" style="display:none">
+      Room: <strong id="game-room-code"></strong>
+    </div>
+    <div id="turn-indicator"></div>
+
+    <div class="scoreboard">
+      <!-- Player 1 -->
+      <div id="player1-panel" class="player-panel">
+        <div class="player-name" id="p1-name"></div>
+        <div class="player-score" id="p1-score">501</div>
+        <div class="player-stats">
+          Darts: <strong id="p1-darts">0</strong><br>
+          Avg: <strong id="p1-average">0.0</strong><br>
+          Best: <strong id="p1-highest">0</strong>
+        </div>
+        <div class="checkout-hint" style="display:none">
+          <span id="p1-checkout">-</span>
+        </div>
+      </div>
+
+      <!-- Player 2 -->
+      <div id="player2-panel" class="player-panel">
+        <div class="player-name" id="p2-name"></div>
+        <div class="player-score" id="p2-score">501</div>
+        <div class="player-stats">
+          Darts: <strong id="p2-darts">0</strong><br>
+          Avg: <strong id="p2-average">0.0</strong><br>
+          Best: <strong id="p2-highest">0</strong>
+        </div>
+        <div class="checkout-hint" style="display:none">
+          <span id="p2-checkout">-</span>
+        </div>
+      </div>
+
+      <!-- Player 3 -->
+      <div id="player3-panel" class="player-panel">
+        <div class="player-name" id="p3-name"></div>
+        <div class="player-score" id="p3-score">501</div>
+        <div class="player-stats">
+          Darts: <strong id="p3-darts">0</strong><br>
+          Avg: <strong id="p3-average">0.0</strong><br>
+          Best: <strong id="p3-highest">0</strong>
+        </div>
+        <div class="checkout-hint" style="display:none">
+          <span id="p3-checkout">-</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Score Input -->
+    <div class="input-section">
+      <div class="score-input-row">
+        <input type="number" id="score-input" placeholder="Score" min="0" max="180" inputmode="numeric">
+        <button id="submit-btn" class="btn btn-submit">OK</button>
+      </div>
+      <div class="action-row">
+        <button id="undo-btn" class="btn btn-undo">Undo</button>
+      </div>
+      <div class="quick-scores">
+        <button class="quick-score" data-score="0">0</button>
+        <button class="quick-score" data-score="26">26</button>
+        <button class="quick-score" data-score="41">41</button>
+        <button class="quick-score" data-score="45">45</button>
+        <button class="quick-score" data-score="60">60</button>
+        <button class="quick-score" data-score="85">85</button>
+        <button class="quick-score" data-score="100">100</button>
+        <button class="quick-score" data-score="140">140</button>
+        <button class="quick-score" data-score="180">180</button>
+      </div>
+    </div>
+
+    <!-- Visit History -->
+    <div class="history-table-section">
+      <h3>Round History</h3>
+      <div id="history-container">
+        <table class="visit-table">
+          <thead>
+            <tr>
+              <th id="hist-p1-name">P1</th>
+              <th id="hist-p2-name">P2</th>
+              <th>Rd</th>
+              <th id="hist-p3-name">P3</th>
+            </tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Game Over Screen ==================== -->
+  <div id="gameover-screen" class="screen">
+    <div class="gameover-card">
+      <div class="trophy">&#127942;</div>
+      <div class="winner-title">Winner</div>
+      <div id="winner-name"></div>
+    </div>
+
+    <div class="final-stats">
+      <div class="final-stat-card">
+        <h3 id="go-p1-name">Player 1</h3>
+        <div class="stat-row">
+          <span class="stat-label">Final Score</span>
+          <span class="stat-value" id="go-p1-score"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Darts</span>
+          <span class="stat-value" id="go-p1-darts"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Average</span>
+          <span class="stat-value" id="go-p1-average"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Best Visit</span>
+          <span class="stat-value" id="go-p1-highest"></span>
+        </div>
+      </div>
+
+      <div class="final-stat-card">
+        <h3 id="go-p2-name">Player 2</h3>
+        <div class="stat-row">
+          <span class="stat-label">Final Score</span>
+          <span class="stat-value" id="go-p2-score"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Darts</span>
+          <span class="stat-value" id="go-p2-darts"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Average</span>
+          <span class="stat-value" id="go-p2-average"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Best Visit</span>
+          <span class="stat-value" id="go-p2-highest"></span>
+        </div>
+      </div>
+
+      <div class="final-stat-card">
+        <h3 id="go-p3-name">Player 3</h3>
+        <div class="stat-row">
+          <span class="stat-label">Final Score</span>
+          <span class="stat-value" id="go-p3-score"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Darts</span>
+          <span class="stat-value" id="go-p3-darts"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Average</span>
+          <span class="stat-value" id="go-p3-average"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Best Visit</span>
+          <span class="stat-value" id="go-p3-highest"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="gameover-buttons">
+      <button id="rematch-btn" class="btn btn-primary">Rematch</button>
+      <button id="new-game-btn" class="btn btn-secondary">New Game</button>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
