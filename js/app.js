@@ -337,7 +337,7 @@ function announceCheckout(player) {
 }
 
 function announceWinner(playerName) {
-  speak(playerName + ' wins!');
+  speak('Game shot and the match! ' + playerName);
 }
 
 // ============================================================
@@ -688,9 +688,9 @@ function submitScore(points) {
         return;
       }
 
-      speak(player.name + ' wins the set!');
+      speak('Game shot and the set! ' + player.name);
     } else {
-      speak(player.name + ' wins the leg!');
+      speak('Game shot and the leg! ' + player.name);
     }
 
     render();
