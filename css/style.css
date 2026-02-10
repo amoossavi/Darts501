@@ -42,13 +42,20 @@ body {
 .screen {
   display: none;
   padding: 20px;
-  max-width: 800px;
+  max-width: 900px;
   margin: 0 auto;
   animation: fadeIn 0.3s ease;
 }
 
 .screen.active {
   display: block;
+}
+
+#game-screen.active {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 @keyframes fadeIn {
@@ -64,7 +71,7 @@ body {
   text-align: center;
   font-size: 2.5rem;
   font-weight: 800;
-  margin: 30px 0 10px;
+  margin: 12px 0 6px;
   letter-spacing: 2px;
 }
 
@@ -75,20 +82,20 @@ body {
 .app-subtitle {
   text-align: center;
   color: var(--text-dim);
-  margin-bottom: 40px;
+  margin-bottom: 12px;
   font-size: 1.1rem;
 }
 
 .setup-card {
   background: var(--bg-card);
   border-radius: 16px;
-  padding: 30px;
-  margin-bottom: 24px;
+  padding: 20px;
+  margin-bottom: 10px;
   border: 1px solid var(--border);
 }
 
 .setup-card h2 {
-  margin-bottom: 20px;
+  margin-bottom: 12px;
   font-size: 1.2rem;
   color: var(--text-dim);
   text-transform: uppercase;
@@ -96,7 +103,7 @@ body {
 }
 
 .input-group {
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .input-group label {
@@ -109,7 +116,7 @@ body {
 
 .input-group input {
   width: 100%;
-  padding: 14px 16px;
+  padding: 10px 14px;
   border: 2px solid var(--border);
   border-radius: 10px;
   background: var(--input-bg);
@@ -140,8 +147,8 @@ body {
 }
 
 .avatar-option {
-  width: 56px;
-  height: 56px;
+  width: 44px;
+  height: 44px;
   border: 2px solid var(--border);
   border-radius: 10px;
   background: var(--input-bg);
@@ -169,9 +176,9 @@ body {
 
 /* Game screen avatar */
 .player-avatar {
-  width: 48px;
-  height: 48px;
-  margin: 0 auto 6px;
+  width: clamp(36px, 8vw, 64px);
+  height: clamp(36px, 8vw, 64px);
+  margin: 0 auto 2px;
 }
 
 .player-avatar svg {
@@ -187,7 +194,7 @@ body {
 
 .set-option {
   flex: 1;
-  padding: 12px;
+  padding: 8px;
   border: 2px solid var(--border);
   border-radius: 10px;
   background: var(--input-bg);
@@ -213,9 +220,9 @@ body {
   display: flex;
   justify-content: center;
   gap: 16px;
-  font-size: 0.85rem;
+  font-size: clamp(1rem, 2.5vw, 1.4rem);
   color: var(--text-dim);
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .player-legs-sets strong {
@@ -243,7 +250,7 @@ body {
   background: var(--accent);
   color: white;
   width: 100%;
-  margin-top: 10px;
+  margin-top: 6px;
   box-shadow: 0 4px 15px var(--accent-glow);
 }
 
@@ -445,8 +452,9 @@ body {
 }
 
 .online-join-row input {
-  flex: 1;
-  padding: 12px 14px;
+  width: 100px;
+  min-width: 0;
+  padding: 12px 8px;
   border: 2px solid var(--border);
   border-radius: 10px;
   background: var(--input-bg);
@@ -605,9 +613,9 @@ body {
 
 #turn-indicator {
   text-align: center;
-  font-size: 1.3rem;
+  font-size: clamp(1.1rem, 2.5vw, 1.6rem);
   font-weight: 700;
-  padding: 12px;
+  padding: 6px;
   color: var(--green);
   letter-spacing: 1px;
 }
@@ -615,14 +623,14 @@ body {
 .scoreboard {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: clamp(8px, 2vw, 16px);
+  margin-bottom: 8px;
 }
 
 .player-panel {
   background: var(--bg-card);
   border-radius: 16px;
-  padding: 20px;
+  padding: clamp(12px, 2.5vw, 24px);
   text-align: center;
   border: 2px solid var(--border);
   transition: border-color 0.3s, box-shadow 0.3s;
@@ -634,12 +642,12 @@ body {
 }
 
 .player-name {
-  font-size: 1rem;
+  font-size: clamp(0.9rem, 2.2vw, 1.3rem);
   font-weight: 700;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 1px;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -650,14 +658,14 @@ body {
 }
 
 .player-score {
-  font-size: 3.5rem;
+  font-size: clamp(2.5rem, 8vw, 5rem);
   font-weight: 800;
   line-height: 1;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
 
 .player-stats {
-  font-size: 0.8rem;
+  font-size: clamp(0.8rem, 1.8vw, 1.05rem);
   color: var(--text-dim);
   line-height: 1.8;
 }
@@ -667,13 +675,15 @@ body {
 }
 
 .checkout-hint {
-  margin-top: 8px;
-  padding: 6px 10px;
-  background: var(--bg-panel);
-  border-radius: 8px;
-  font-size: 0.85rem;
-  color: var(--green);
-  font-weight: 600;
+  margin-top: 10px;
+  padding: clamp(10px, 2vw, 18px) clamp(14px, 3vw, 24px);
+  background: var(--accent);
+  border-radius: 10px;
+  font-size: clamp(1.4rem, 4vw, 2.2rem);
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 /* ============================================================
@@ -683,15 +693,15 @@ body {
 .input-section {
   background: var(--bg-card);
   border-radius: 16px;
-  padding: 20px;
-  margin-bottom: 16px;
+  padding: 12px;
+  margin-bottom: 8px;
   border: 1px solid var(--border);
 }
 
 .score-input-row {
   display: flex;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
 
 .score-input-row input {
@@ -701,7 +711,7 @@ body {
   border-radius: 10px;
   background: var(--input-bg);
   color: var(--text);
-  font-size: 1.5rem;
+  font-size: clamp(1.2rem, 3vw, 2rem);
   font-weight: 700;
   text-align: center;
 }
@@ -788,9 +798,14 @@ body {
 .history-table-section {
   background: var(--bg-card);
   border-radius: 16px;
-  padding: 20px;
+  padding: 12px;
   border: 1px solid var(--border);
-  margin-bottom: 20px;
+  margin-bottom: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .history-table-section h3 {
@@ -799,11 +814,12 @@ body {
   font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 1px;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
 
 #history-container {
-  max-height: 200px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -988,7 +1004,7 @@ body {
 }
 
 #score-overlay-text {
-  font-size: 5rem;
+  font-size: clamp(3.5rem, 12vw, 7rem);
   font-weight: 900;
   color: #fff;
   text-align: center;
@@ -998,7 +1014,7 @@ body {
 }
 
 #score-overlay-text.big-score {
-  font-size: 7rem;
+  font-size: clamp(5rem, 16vw, 10rem);
   text-shadow: 0 0 60px rgba(255, 255, 255, 0.4), 0 0 120px currentColor;
 }
 
@@ -1025,27 +1041,42 @@ body {
    Responsive
    ============================================================ */
 
+@media (min-width: 600px) {
+  #setup-screen.active {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-content: start;
+  }
+
+  #setup-screen .app-title,
+  #setup-screen .app-subtitle {
+    grid-column: 1 / -1;
+  }
+
+  /* Players card spans left column across all rows */
+  #setup-screen .setup-card:first-of-type {
+    grid-row: span 3;
+  }
+}
+
 @media (max-width: 500px) {
-  .screen {
-    padding: 12px;
+  .online-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .online-actions .btn-secondary {
+    width: 100%;
+  }
+
+  .online-join-row {
+    min-width: 0;
   }
 
   .app-title {
     font-size: 2rem;
     margin-top: 16px;
-  }
-
-  .player-score {
-    font-size: 2.5rem;
-  }
-
-  .player-panel {
-    padding: 14px 10px;
-  }
-
-  .score-input-row input {
-    font-size: 1.2rem;
-    padding: 14px;
   }
 
   .btn {
