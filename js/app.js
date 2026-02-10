@@ -5,6 +5,28 @@
 const STORAGE_KEY = 'darts501_history';
 const legWonAudio = new Audio('audio/leg-won.mp3');
 
+// SVG person avatars
+const AVATARS = [
+  // 0: Short brown hair, male
+  `<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="26" r="16" fill="#f0c8a0"/><ellipse cx="30" cy="52" rx="20" ry="14" fill="#3498db"/><path d="M14 22c0-10 7-18 16-18s16 8 16 18c0 0-3-10-16-10S14 22 14 22z" fill="#6b4226"/><circle cx="24" cy="25" r="2" fill="#333"/><circle cx="36" cy="25" r="2" fill="#333"/><path d="M26 32q4 3 8 0" stroke="#333" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>`,
+  // 1: Long blonde hair, female
+  `<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="26" r="16" fill="#f5d5b8"/><ellipse cx="30" cy="52" rx="20" ry="14" fill="#e74c3c"/><path d="M14 20c0-12 7-18 16-18s16 6 16 18c0 0-2-12-16-12S14 20 14 20z" fill="#f0d060"/><path d="M14 20c-1 8-2 18 2 24" stroke="#f0d060" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M46 20c1 8 2 18-2 24" stroke="#f0d060" stroke-width="5" fill="none" stroke-linecap="round"/><circle cx="24" cy="25" r="2" fill="#333"/><circle cx="36" cy="25" r="2" fill="#333"/><path d="M26 32q4 3 8 0" stroke="#c0392b" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>`,
+  // 2: Bald with beard, male
+  `<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="26" r="16" fill="#d4a57b"/><ellipse cx="30" cy="52" rx="20" ry="14" fill="#2c3e50"/><ellipse cx="30" cy="10" rx="14" ry="4" fill="#d4a57b"/><circle cx="24" cy="25" r="2" fill="#333"/><circle cx="36" cy="25" r="2" fill="#333"/><path d="M20 34c2 6 18 6 20 0" fill="#4a2f1a"/><path d="M20 34q10 4 20 0" stroke="#4a2f1a" stroke-width="1" fill="none"/></svg>`,
+  // 3: Red curly hair, female
+  `<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="26" r="16" fill="#f5d5b8"/><ellipse cx="30" cy="52" rx="20" ry="14" fill="#27ae60"/><circle cx="18" cy="16" r="6" fill="#c0392b"/><circle cx="30" cy="10" r="7" fill="#c0392b"/><circle cx="42" cy="16" r="6" fill="#c0392b"/><circle cx="14" cy="24" r="5" fill="#c0392b"/><circle cx="46" cy="24" r="5" fill="#c0392b"/><circle cx="24" cy="25" r="2" fill="#333"/><circle cx="36" cy="25" r="2" fill="#333"/><path d="M26 32q4 3 8 0" stroke="#333" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>`,
+  // 4: Black hair with glasses, male
+  `<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="26" r="16" fill="#e8b88a"/><ellipse cx="30" cy="52" rx="20" ry="14" fill="#8e44ad"/><path d="M14 22c0-10 7-18 16-18s16 8 16 18c0 0-3-12-16-12S14 22 14 22z" fill="#1a1a2e"/><rect x="18" y="21" width="11" height="9" rx="3" fill="none" stroke="#333" stroke-width="2"/><rect x="31" y="21" width="11" height="9" rx="3" fill="none" stroke="#333" stroke-width="2"/><line x1="29" y1="25" x2="31" y2="25" stroke="#333" stroke-width="2"/><circle cx="23.5" cy="25.5" r="2" fill="#333"/><circle cx="36.5" cy="25.5" r="2" fill="#333"/><path d="M26 33q4 3 8 0" stroke="#333" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>`,
+  // 5: Short grey hair, older
+  `<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="26" r="16" fill="#dbb899"/><ellipse cx="30" cy="52" rx="20" ry="14" fill="#7f8c8d"/><path d="M14 22c0-10 7-16 16-16s16 6 16 16c0 0-3-10-16-10S14 22 14 22z" fill="#bdc3c7"/><circle cx="24" cy="25" r="2" fill="#555"/><circle cx="36" cy="25" r="2" fill="#555"/><path d="M26 32q4 2 8 0" stroke="#555" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M20 22h6" stroke="#999" stroke-width="0.8" fill="none"/><path d="M34 22h6" stroke="#999" stroke-width="0.8" fill="none"/></svg>`,
+  // 6: Dark hair with headband, female
+  `<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="26" r="16" fill="#c69070"/><ellipse cx="30" cy="52" rx="20" ry="14" fill="#e67e22"/><path d="M14 22c0-10 7-18 16-18s16 8 16 18c0 0-3-12-16-12S14 22 14 22z" fill="#2c1810"/><path d="M14 24c-1 6-1 14 2 20" stroke="#2c1810" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M46 24c1 6 1 14-2 20" stroke="#2c1810" stroke-width="4" fill="none" stroke-linecap="round"/><rect x="13" y="14" width="34" height="4" rx="2" fill="#e74c3c"/><circle cx="24" cy="25" r="2" fill="#333"/><circle cx="36" cy="25" r="2" fill="#333"/><path d="M26 32q4 3 8 0" stroke="#333" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>`,
+  // 7: Spiky hair, young male
+  `<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="26" r="16" fill="#f0c8a0"/><ellipse cx="30" cy="52" rx="20" ry="14" fill="#1abc9c"/><polygon points="18,18 22,4 26,16 30,2 34,16 38,4 42,18" fill="#e67e22"/><circle cx="24" cy="25" r="2" fill="#333"/><circle cx="36" cy="25" r="2" fill="#333"/><path d="M26 32q4 3 8 0" stroke="#333" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>`,
+];
+
+let selectedAvatars = [0, 1];
+
 // Checkout suggestion table (scores 2-170)
 const CHECKOUTS = {
   170: 'T20 T20 Bull',
@@ -542,9 +564,10 @@ function leaveRoom() {
 // Game state
 let game = null;
 
-function createPlayer(name) {
+function createPlayer(name, avatar) {
   return {
     name: name,
+    avatar: avatar !== undefined ? avatar : 0,
     score: 501,
     darts: 0,
     visits: [],
@@ -557,7 +580,7 @@ function createPlayer(name) {
 
 function startGame(name1, name2, bestOfSets) {
   game = {
-    players: [createPlayer(name1), createPlayer(name2)],
+    players: [createPlayer(name1, selectedAvatars[0]), createPlayer(name2, selectedAvatars[1])],
     currentPlayer: 0,
     legStartingPlayer: 0,
     bestOfSets: bestOfSets || 3,
@@ -566,6 +589,7 @@ function startGame(name1, name2, bestOfSets) {
   };
 
   localStorage.setItem('darts501_playerNames', JSON.stringify([name1, name2]));
+  localStorage.setItem('darts501_avatars', JSON.stringify(selectedAvatars));
 
   // Show bull-up overlay to decide who throws first
   document.getElementById('bullup-p1').textContent = name1;
@@ -795,6 +819,7 @@ function render() {
 
     panel.classList.toggle('active-player', game.currentPlayer === i);
 
+    document.getElementById(`p${idx}-avatar`).innerHTML = AVATARS[p.avatar] || AVATARS[0];
     document.getElementById(`p${idx}-name`).textContent = p.name;
     document.getElementById(`p${idx}-sets`).textContent = p.sets;
     document.getElementById(`p${idx}-legs`).textContent = p.legs;
@@ -956,7 +981,7 @@ function clearHistory() {
 function init() {
   initFirebase();
 
-  // Load saved player names
+  // Load saved player names and avatars
   try {
     const saved = JSON.parse(localStorage.getItem('darts501_playerNames'));
     if (saved) {
@@ -964,6 +989,29 @@ function init() {
       document.getElementById('player2-name').value = saved[1] || '';
     }
   } catch {}
+  try {
+    const savedAvatars = JSON.parse(localStorage.getItem('darts501_avatars'));
+    if (savedAvatars) {
+      selectedAvatars = savedAvatars;
+    }
+  } catch {}
+
+  // Render avatar pickers
+  for (let p = 0; p < 2; p++) {
+    const picker = document.getElementById(`avatar-picker-${p + 1}`);
+    for (let i = 0; i < AVATARS.length; i++) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'avatar-option' + (selectedAvatars[p] === i ? ' selected' : '');
+      btn.innerHTML = AVATARS[i];
+      btn.addEventListener('click', () => {
+        selectedAvatars[p] = i;
+        picker.querySelectorAll('.avatar-option').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+      });
+      picker.appendChild(btn);
+    }
+  }
 
   // Sets selector
   document.querySelectorAll('.set-option').forEach(btn => {
