@@ -496,6 +496,17 @@ async function hostGame() {
     document.getElementById('host-btn').disabled = true;
     document.getElementById('host-btn').textContent = 'Hosting';
     showMessage('Room created: ' + roomCode);
+    // Listen for a player joining
+    let hostNotified = false;
+    unsubscribeGame = db.collection('games').doc(roomCode).onSnapshot(doc => {
+      if (!doc.exists) return;
+      const data = doc.data();
+      if (data.joined && !hostNotified) {
+        hostNotified = true;
+        showMessage('Player joined the room!');
+        speak('Player joined');
+      }
+    });
   } catch (err) {
     showMessage('Failed to create room');
     console.error(err);
@@ -516,6 +527,7 @@ async function joinRoom(code) {
     }
     roomCode = code;
     isOnline = true;
+    await db.collection('games').doc(roomCode).update({ joined: true });
 
     const data = doc.data();
     if (data.game && !data.game.gameOver) {
