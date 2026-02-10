@@ -3,6 +3,7 @@
 // ============================================================
 
 const STORAGE_KEY = 'darts501_history';
+const legWonAudio = new Audio('audio/leg-won.mp3');
 
 // Checkout suggestion table (scores 2-170)
 const CHECKOUTS = {
@@ -547,22 +548,40 @@ function createPlayer(name) {
     score: 501,
     darts: 0,
     visits: [],
+    legs: 0,
+    sets: 0,
+    matchDarts: 0,
+    matchVisits: [],
   };
 }
 
-function startGame(name1, name2) {
+function startGame(name1, name2, bestOfSets) {
   game = {
     players: [createPlayer(name1), createPlayer(name2)],
     currentPlayer: 0,
+    legStartingPlayer: 0,
+    bestOfSets: bestOfSets || 3,
     gameOver: false,
     winner: null,
   };
 
   localStorage.setItem('darts501_playerNames', JSON.stringify([name1, name2]));
 
+  // Show bull-up overlay to decide who throws first
+  document.getElementById('bullup-p1').textContent = name1;
+  document.getElementById('bullup-p2').textContent = name2;
+  document.getElementById('bullup-overlay').style.display = '';
+}
+
+function completeBullUp(playerIndex) {
+  game.currentPlayer = playerIndex;
+  game.legStartingPlayer = playerIndex;
+
+  document.getElementById('bullup-overlay').style.display = 'none';
+
   showScreen('game-screen');
-  document.getElementById('hist-p1-name').textContent = name1;
-  document.getElementById('hist-p2-name').textContent = name2;
+  document.getElementById('hist-p1-name').textContent = game.players[0].name;
+  document.getElementById('hist-p2-name').textContent = game.players[1].name;
 
   if (isOnline) {
     showRoomCodeOnGameScreen();
@@ -572,7 +591,26 @@ function startGame(name1, name2) {
 
   render();
   focusScoreInput();
-  speak('Game on! ' + name1 + ' to throw first');
+  speak('Game on! ' + game.players[playerIndex].name + ' to throw first');
+}
+
+function startNewLeg() {
+  // Accumulate match stats before resetting leg
+  for (const p of game.players) {
+    p.matchDarts += p.darts;
+    p.matchVisits = p.matchVisits.concat(p.visits);
+    p.score = 501;
+    p.darts = 0;
+    p.visits = [];
+  }
+
+  // Alternate who throws first
+  game.legStartingPlayer = (game.legStartingPlayer + 1) % game.players.length;
+  game.currentPlayer = game.legStartingPlayer;
+
+  render();
+  syncGameToFirestore();
+  focusScoreInput();
 }
 
 function getCurrentPlayer() {
@@ -620,12 +658,44 @@ function submitScore(points) {
   player.darts += 3;
 
   if (player.score === 0) {
-    game.gameOver = true;
-    game.winner = game.currentPlayer;
-    saveGame();
+    legWonAudio.currentTime = 0;
+    legWonAudio.play().catch(() => {});
+    player.legs++;
+    const setsToWin = Math.ceil(game.bestOfSets / 2);
+
+    if (player.legs >= 2) {
+      // Won the set
+      player.sets++;
+      player.legs = 0;
+      // Reset other player's legs too
+      for (const p of game.players) {
+        if (p !== player) p.legs = 0;
+      }
+
+      if (player.sets >= setsToWin) {
+        // Won the match
+        // Accumulate final leg stats
+        for (const p of game.players) {
+          p.matchDarts += p.darts;
+          p.matchVisits = p.matchVisits.concat(p.visits);
+        }
+        game.gameOver = true;
+        game.winner = game.currentPlayer;
+        saveGame();
+        syncGameToFirestore();
+        showGameOver();
+        announceWinner(player.name);
+        return;
+      }
+
+      speak(player.name + ' wins the set!');
+    } else {
+      speak(player.name + ' wins the leg!');
+    }
+
+    render();
     syncGameToFirestore();
-    showGameOver();
-    announceWinner(player.name);
+    setTimeout(() => startNewLeg(), 2000);
     return;
   }
 
@@ -662,17 +732,18 @@ function undoLastThrow() {
 }
 
 function calculateAverage(player) {
-  if (player.darts === 0) return 0;
-  const totalScored = 501 - player.score;
-  // Only count non-busted visits for the scored total
-  const scored = player.visits
+  const totalDarts = player.matchDarts + player.darts;
+  if (totalDarts === 0) return 0;
+  const allVisits = player.matchVisits.concat(player.visits);
+  const scored = allVisits
     .filter(v => !v.busted)
     .reduce((sum, v) => sum + v.score, 0);
-  return (scored / player.darts) * 3;
+  return (scored / totalDarts) * 3;
 }
 
 function getHighestVisit(player) {
-  const valid = player.visits.filter(v => !v.busted);
+  const allVisits = player.matchVisits.concat(player.visits);
+  const valid = allVisits.filter(v => !v.busted);
   if (valid.length === 0) return 0;
   return Math.max(...valid.map(v => v.score));
 }
@@ -725,8 +796,10 @@ function render() {
     panel.classList.toggle('active-player', game.currentPlayer === i);
 
     document.getElementById(`p${idx}-name`).textContent = p.name;
+    document.getElementById(`p${idx}-sets`).textContent = p.sets;
+    document.getElementById(`p${idx}-legs`).textContent = p.legs;
     document.getElementById(`p${idx}-score`).textContent = p.score;
-    document.getElementById(`p${idx}-darts`).textContent = p.darts;
+    document.getElementById(`p${idx}-darts`).textContent = p.matchDarts + p.darts;
     document.getElementById(`p${idx}-average`).textContent = calculateAverage(p).toFixed(1);
     document.getElementById(`p${idx}-highest`).textContent = getHighestVisit(p);
 
@@ -794,8 +867,8 @@ function showGameOver() {
     const p = game.players[i];
     const idx = i + 1;
     document.getElementById(`go-p${idx}-name`).textContent = p.name;
-    document.getElementById(`go-p${idx}-score`).textContent = p.score;
-    document.getElementById(`go-p${idx}-darts`).textContent = p.darts;
+    document.getElementById(`go-p${idx}-sets`).textContent = p.sets;
+    document.getElementById(`go-p${idx}-darts`).textContent = p.matchDarts;
     document.getElementById(`go-p${idx}-average`).textContent = calculateAverage(p).toFixed(1);
     document.getElementById(`go-p${idx}-highest`).textContent = getHighestVisit(p);
   }
@@ -812,11 +885,12 @@ function saveGame() {
   const entry = {
     date: new Date().toISOString(),
     winner: game.players[game.winner].name,
+    bestOfSets: game.bestOfSets,
     players: game.players.map(p => ({
       name: p.name,
-      finalScore: p.score,
+      sets: p.sets,
       average: parseFloat(calculateAverage(p).toFixed(1)),
-      dartsThrown: p.darts,
+      dartsThrown: p.matchDarts,
     })),
   };
   history.push(entry);
@@ -850,9 +924,10 @@ function renderHistory() {
     // Support both old 2-player format and new players array format
     const players = g.players || [g.player1, g.player2];
 
-    const resultParts = players.map(p =>
-      `<span class="${g.winner === p.name ? 'history-winner' : ''}">${p.name} (${p.finalScore})</span>`
-    ).join('<span class="history-vs">vs</span>');
+    const resultParts = players.map(p => {
+      const detail = p.sets !== undefined ? p.sets + ' sets' : p.finalScore;
+      return `<span class="${g.winner === p.name ? 'history-winner' : ''}">${p.name} (${detail})</span>`;
+    }).join('<span class="history-vs">vs</span>');
 
     const avgParts = players.map(p => p.average).join(' - ');
 
@@ -890,11 +965,20 @@ function init() {
     }
   } catch {}
 
+  // Sets selector
+  document.querySelectorAll('.set-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.set-option').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
   // Start game button
   document.getElementById('start-btn').addEventListener('click', () => {
     const name1 = document.getElementById('player1-name').value.trim() || 'Player 1';
     const name2 = document.getElementById('player2-name').value.trim() || 'Player 2';
-    startGame(name1, name2);
+    const bestOfSets = parseInt(document.querySelector('.set-option.active').dataset.sets, 10);
+    startGame(name1, name2, bestOfSets);
   });
 
   // Submit score
@@ -949,7 +1033,7 @@ function init() {
   // Rematch button
   document.getElementById('rematch-btn').addEventListener('click', () => {
     if (game) {
-      startGame(game.players[0].name, game.players[1].name);
+      startGame(game.players[0].name, game.players[1].name, game.bestOfSets);
     }
   });
 
@@ -966,6 +1050,10 @@ function init() {
     if (e.key === 'Enter') document.getElementById('join-btn').click();
   });
   document.getElementById('leave-room-btn').addEventListener('click', leaveRoom);
+
+  // Bull-up buttons
+  document.getElementById('bullup-p1').addEventListener('click', () => completeBullUp(0));
+  document.getElementById('bullup-p2').addEventListener('click', () => completeBullUp(1));
 
   // Voice settings
   audioCache.clear();

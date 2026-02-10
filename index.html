@@ -31,6 +31,15 @@
         <label for="player2-name">Player 2</label>
         <input type="text" id="player2-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
       </div>
+      <div class="input-group">
+        <label>Best of Sets</label>
+        <div class="sets-selector" id="sets-selector">
+          <button class="set-option" data-sets="1">1</button>
+          <button class="set-option active" data-sets="3">3</button>
+          <button class="set-option" data-sets="5">5</button>
+          <button class="set-option" data-sets="7">7</button>
+        </div>
+      </div>
       <button id="start-btn" class="btn btn-primary">Start Game</button>
     </div>
 
@@ -78,6 +87,18 @@
     </div>
   </div>
 
+  <!-- Bull-Up Overlay (nearest to bull throws first) -->
+  <div id="bullup-overlay" class="bullup-overlay" style="display:none">
+    <div class="bullup-card">
+      <h2>Nearest the Bull</h2>
+      <p>Who was closest?</p>
+      <div class="bullup-buttons">
+        <button id="bullup-p1" class="btn btn-primary bullup-btn"></button>
+        <button id="bullup-p2" class="btn btn-primary bullup-btn"></button>
+      </div>
+    </div>
+  </div>
+
   <!-- Waiting Overlay (shown when viewer joins before game starts) -->
   <div id="waiting-overlay" class="waiting-overlay" style="display:none">
     <div class="waiting-card">
@@ -99,6 +120,10 @@
       <!-- Player 1 -->
       <div id="player1-panel" class="player-panel">
         <div class="player-name" id="p1-name"></div>
+        <div class="player-legs-sets">
+          <span>Sets: <strong id="p1-sets">0</strong></span>
+          <span>Legs: <strong id="p1-legs">0</strong></span>
+        </div>
         <div class="player-score" id="p1-score">501</div>
         <div class="player-stats">
           Darts: <strong id="p1-darts">0</strong><br>
@@ -113,6 +138,10 @@
       <!-- Player 2 -->
       <div id="player2-panel" class="player-panel">
         <div class="player-name" id="p2-name"></div>
+        <div class="player-legs-sets">
+          <span>Sets: <strong id="p2-sets">0</strong></span>
+          <span>Legs: <strong id="p2-legs">0</strong></span>
+        </div>
         <div class="player-score" id="p2-score">501</div>
         <div class="player-stats">
           Darts: <strong id="p2-darts">0</strong><br>
@@ -167,8 +196,8 @@
       <div class="final-stat-card">
         <h3 id="go-p1-name">Player 1</h3>
         <div class="stat-row">
-          <span class="stat-label">Final Score</span>
-          <span class="stat-value" id="go-p1-score"></span>
+          <span class="stat-label">Sets</span>
+          <span class="stat-value" id="go-p1-sets"></span>
         </div>
         <div class="stat-row">
           <span class="stat-label">Darts</span>
@@ -187,8 +216,8 @@
       <div class="final-stat-card">
         <h3 id="go-p2-name">Player 2</h3>
         <div class="stat-row">
-          <span class="stat-label">Final Score</span>
-          <span class="stat-value" id="go-p2-score"></span>
+          <span class="stat-label">Sets</span>
+          <span class="stat-value" id="go-p2-sets"></span>
         </div>
         <div class="stat-row">
           <span class="stat-label">Darts</span>
