@@ -503,8 +503,12 @@ async function hostGame() {
       const data = doc.data();
       if (data.joined && !hostNotified) {
         hostNotified = true;
-        showMessage('Player joined the room!');
-        speak('Player joined');
+        const hint = document.querySelector('.room-hint');
+        if (hint) {
+          hint.textContent = 'Player joined!';
+          hint.style.color = 'var(--green)';
+          hint.style.fontWeight = '700';
+        }
       }
     });
   } catch (err) {
