@@ -362,6 +362,49 @@ function announceWinner(playerName) {
   speak('Game shot and the match! ' + playerName);
 }
 
+function playEventAudio(event) {
+  switch (event.type) {
+    case 'score':
+      announceScore(event.points, false);
+      if (event.checkoutPlayerScore && event.checkoutPlayerName) {
+        const co = getCheckoutSuggestion(event.checkoutPlayerScore);
+        if (co) speak(event.checkoutPlayerName + ' you require ' + numberToWords(event.checkoutPlayerScore));
+      }
+      break;
+    case 'bust':
+      announceScore(event.points, true);
+      if (event.checkoutPlayerScore && event.checkoutPlayerName) {
+        const co = getCheckoutSuggestion(event.checkoutPlayerScore);
+        if (co) speak(event.checkoutPlayerName + ' you require ' + numberToWords(event.checkoutPlayerScore));
+      }
+      break;
+    case 'legWon':
+      legWonAudio.currentTime = 0;
+      legWonAudio.play().catch(() => {});
+      speak('Game shot and the leg! ' + event.playerName);
+      break;
+    case 'setWon':
+      legWonAudio.currentTime = 0;
+      legWonAudio.play().catch(() => {});
+      speak('Game shot and the set! ' + event.playerName);
+      break;
+    case 'matchWon':
+      legWonAudio.currentTime = 0;
+      legWonAudio.play().catch(() => {});
+      announceWinner(event.playerName);
+      break;
+    case 'gameStart':
+      speak('Game on! ' + event.playerName + ' to throw first');
+      break;
+  }
+}
+
+function fireEvent(event) {
+  game.lastEvent = event;
+  lastProcessedEventId = event.id;
+  playEventAudio(event);
+}
+
 // ============================================================
 // Score Overlay Animation
 // ============================================================
@@ -423,6 +466,7 @@ let db = null;
 let roomCode = null;
 let unsubscribeGame = null;
 let isOnline = false;
+let lastProcessedEventId = null;
 
 function initFirebase() {
   firebase.initializeApp(firebaseConfig);
@@ -510,6 +554,11 @@ function subscribeToGame() {
     game = data.game;
     document.getElementById('waiting-overlay').style.display = 'none';
 
+    if (game.lastEvent && game.lastEvent.id !== lastProcessedEventId) {
+      lastProcessedEventId = game.lastEvent.id;
+      playEventAudio(game.lastEvent);
+    }
+
     if (game.gameOver) {
       showRoomCodeOnGameScreen();
       showGameOver();
@@ -551,6 +600,7 @@ function leaveRoom() {
   }
   roomCode = null;
   isOnline = false;
+  lastProcessedEventId = null;
   document.getElementById('room-info').style.display = 'none';
   document.getElementById('waiting-overlay').style.display = 'none';
   document.getElementById('game-room-info').style.display = 'none';
@@ -607,6 +657,8 @@ function completeBullUp(playerIndex) {
   document.getElementById('hist-p1-name').textContent = game.players[0].name;
   document.getElementById('hist-p2-name').textContent = game.players[1].name;
 
+  fireEvent({ id: Date.now(), type: 'gameStart', playerName: game.players[playerIndex].name });
+
   if (isOnline) {
     showRoomCodeOnGameScreen();
     syncGameToFirestore();
@@ -615,7 +667,6 @@ function completeBullUp(playerIndex) {
 
   render();
   focusScoreInput();
-  speak('Game on! ' + game.players[playerIndex].name + ' to throw first');
 }
 
 function startNewLeg() {
@@ -664,10 +715,9 @@ function submitScore(points) {
   if (isBust(player.score, points)) {
     showScoreOverlay(points, true);
     showMessage('BUST! Score reverted.');
-    announceScore(points, true);
     player.visits.push({ score: points, busted: true });
     player.darts += 3;
-    announceCheckout(player);
+    fireEvent({ id: Date.now(), type: 'bust', points, checkoutPlayerName: player.name, checkoutPlayerScore: player.score });
     switchPlayer();
     render();
     syncGameToFirestore();
@@ -676,14 +726,11 @@ function submitScore(points) {
   }
 
   showScoreOverlay(points, false);
-  announceScore(points, false);
   player.score -= points;
   player.visits.push({ score: points, busted: false });
   player.darts += 3;
 
   if (player.score === 0) {
-    legWonAudio.currentTime = 0;
-    legWonAudio.play().catch(() => {});
     player.legs++;
     const setsToWin = Math.ceil(game.bestOfSets / 2);
 
@@ -706,15 +753,15 @@ function submitScore(points) {
         game.gameOver = true;
         game.winner = game.currentPlayer;
         saveGame();
+        fireEvent({ id: Date.now(), type: 'matchWon', playerName: player.name });
         syncGameToFirestore();
         showGameOver();
-        announceWinner(player.name);
         return;
       }
 
-      speak('Game shot and the set! ' + player.name);
+      fireEvent({ id: Date.now(), type: 'setWon', playerName: player.name });
     } else {
-      speak('Game shot and the leg! ' + player.name);
+      fireEvent({ id: Date.now(), type: 'legWon', playerName: player.name });
     }
 
     render();
@@ -723,7 +770,10 @@ function submitScore(points) {
     return;
   }
 
-  announceCheckout(player);
+  // Normal score — include checkout info for next player
+  const nextPlayerIndex = (game.currentPlayer + 1) % game.players.length;
+  const nextPlayer = game.players[nextPlayerIndex];
+  fireEvent({ id: Date.now(), type: 'score', points, checkoutPlayerName: nextPlayer.name, checkoutPlayerScore: nextPlayer.score });
   switchPlayer();
   render();
   syncGameToFirestore();
