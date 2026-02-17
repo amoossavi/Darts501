@@ -655,7 +655,7 @@ function completeBullUp(playerIndex) {
   if (isOnline) {
     showRoomCodeOnGameScreen();
     syncGameToFirestore();
-    if (!unsubscribeGame) subscribeToGame();
+    subscribeToGame();
   }
 
   render();
