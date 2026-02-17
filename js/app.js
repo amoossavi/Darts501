@@ -432,13 +432,13 @@ function showScoreOverlay(points, busted) {
 // ============================================================
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCEGwUPxd03XAIT-jUaCU3Oyyh2zML8kZg",
-  authDomain: "darts-180-47894.firebaseapp.com",
-  projectId: "darts-180-47894",
-  storageBucket: "darts-180-47894.firebasestorage.app",
-  messagingSenderId: "896187410550",
-  appId: "1:896187410550:web:d4d38665fec03eef9c1757",
-  measurementId: "G-CZLDQ59M7Z"
+  apiKey: ENV.FIREBASE_API_KEY,
+  authDomain: ENV.FIREBASE_AUTH_DOMAIN,
+  projectId: ENV.FIREBASE_PROJECT_ID,
+  storageBucket: ENV.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: ENV.FIREBASE_MESSAGING_SENDER_ID,
+  appId: ENV.FIREBASE_APP_ID,
+  measurementId: ENV.FIREBASE_MEASUREMENT_ID
 };
 
 let db = null;
