@@ -23,6 +23,54 @@
   --input-bg: #0d1b3e;
 }
 
+/* ---- Theme: Light ---- */
+:root[data-theme="light"] {
+  --bg-dark: #f0f2f5;
+  --bg-card: #ffffff;
+  --bg-panel: #e8ecf1;
+  --accent: #d63031;
+  --accent-glow: rgba(214, 48, 49, 0.2);
+  --green: #00b894;
+  --green-glow: rgba(0, 184, 148, 0.2);
+  --text: #2d3436;
+  --text-dim: #636e72;
+  --bust: #d63031;
+  --border: #dfe6e9;
+  --input-bg: #f5f6fa;
+}
+
+/* ---- Theme: Classic Pub ---- */
+:root[data-theme="pub"] {
+  --bg-dark: #1a3c1a;
+  --bg-card: #2d5a27;
+  --bg-panel: #3a6b33;
+  --accent: #d4a017;
+  --accent-glow: rgba(212, 160, 23, 0.3);
+  --green: #8bc34a;
+  --green-glow: rgba(139, 195, 74, 0.3);
+  --text: #f0e6d3;
+  --text-dim: #a8c69f;
+  --bust: #e57373;
+  --border: #4a7c42;
+  --input-bg: #1e4d1e;
+}
+
+/* ---- Theme: Red & Black ---- */
+:root[data-theme="redblack"] {
+  --bg-dark: #0d0d0d;
+  --bg-card: #1a1a1a;
+  --bg-panel: #262626;
+  --accent: #ff1744;
+  --accent-glow: rgba(255, 23, 68, 0.35);
+  --green: #ff5252;
+  --green-glow: rgba(255, 82, 82, 0.3);
+  --text: #f5f5f5;
+  --text-dim: #9e9e9e;
+  --bust: #ff6e40;
+  --border: #333333;
+  --input-bg: #121212;
+}
+
 html, body {
   height: 100%;
 }
@@ -33,6 +81,88 @@ body {
   color: var(--text);
   min-height: 100vh;
   overflow-x: hidden;
+}
+
+/* ============================================================
+   Theme Selector
+   ============================================================ */
+
+.theme-selector {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.theme-btn {
+  flex: 1;
+  min-width: 60px;
+  padding: 8px 4px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, transform 0.15s;
+  text-align: center;
+}
+
+.theme-btn:hover {
+  border-color: var(--text-dim);
+}
+
+.theme-btn:active {
+  transform: scale(0.97);
+}
+
+.theme-btn.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+/* Theme preview swatches */
+.theme-swatch {
+  display: flex;
+  gap: 3px;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.theme-swatch span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* ============================================================
+   Focus & Keyboard Navigation
+   ============================================================ */
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--accent-glow);
+}
+
+/* Skip link for screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ============================================================
@@ -707,6 +837,26 @@ body {
 .btn-undo:hover {
   border-color: var(--text-dim);
   color: var(--text);
+}
+
+/* Loading state for submit button during online sync */
+.btn-loading {
+  opacity: 0.6;
+  pointer-events: none;
+  position: relative;
+}
+
+.btn-loading::after {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  margin-left: 8px;
+  vertical-align: middle;
 }
 
 /* Quick score buttons */

@@ -3,7 +3,37 @@
 // ============================================================
 
 const STORAGE_KEY = 'darts501_history';
+const THEME_STORAGE_KEY = 'darts501_theme';
 const legWonAudio = new Audio('audio/leg-won.mp3');
+
+// ============================================================
+// Theme Switcher
+// ============================================================
+
+function applyTheme(theme) {
+  if (theme === 'default') {
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.documentElement.setAttribute('data-theme', theme);
+  }
+  localStorage.setItem(THEME_STORAGE_KEY, theme);
+
+  // Update active state on theme buttons
+  document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.theme === theme);
+  });
+}
+
+function initTheme() {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY) || 'default';
+  applyTheme(saved);
+
+  document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      applyTheme(btn.dataset.theme);
+    });
+  });
+}
 
 // Checkout suggestion table (scores 2-170)
 const CHECKOUTS = {
@@ -172,29 +202,70 @@ const CHECKOUTS = {
 };
 
 // ============================================================
-// Speech Synthesis (ElevenLabs + browser fallback)
+// Speech Synthesis (Pre-recorded audio with Web Audio API)
 // ============================================================
 
-const ELEVENLABS_MODEL = 'eleven_multilingual_v2';
-const audioCache = new Map();
-let currentAudio = null;
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const audioBuffers = new Map(); // clip name → AudioBuffer
+let voiceReady = false;
 
-function getElevenLabsKey() {
-  return localStorage.getItem('darts501_elevenlabs_key') || '';
+// All audio segment filenames (without extension)
+const VOICE_CLIPS = [
+  '1'
+];
+
+async function preloadVoiceClips() {
+  const results = await Promise.allSettled(
+    VOICE_CLIPS.map(async name => {
+      try {
+        const res = await fetch(`audio/voice/${name}.mp3`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const buf = await res.arrayBuffer();
+        const audioBuf = await audioCtx.decodeAudioData(buf);
+        audioBuffers.set(name, audioBuf);
+      } catch (err) {
+        console.warn(`Voice clip missing: ${name}.mp3`);
+      }
+    })
+  );
+  voiceReady = audioBuffers.size > 0;
+  console.log(`Voice: ${audioBuffers.size}/${VOICE_CLIPS.length} clips loaded`);
 }
 
-const DEFAULT_VOICE_ID = '0rYPA6cLftSM7CCEM9yb';
+// Play a sequence of audio buffers back-to-back with no gap
+function playBufferSequence(buffers) {
+  if (buffers.length === 0) return Promise.resolve();
 
-function getElevenLabsVoiceId() {
-  return DEFAULT_VOICE_ID;
+  return new Promise(resolve => {
+    // Resume context if suspended (autoplay policy)
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    let offset = audioCtx.currentTime;
+    let lastNode = null;
+
+    for (const buf of buffers) {
+      const source = audioCtx.createBufferSource();
+      source.buffer = buf;
+      source.connect(audioCtx.destination);
+      source.start(offset);
+      offset += buf.duration;
+      lastNode = source;
+    }
+
+    if (lastNode) {
+      lastNode.onended = resolve;
+    } else {
+      resolve();
+    }
+  });
 }
 
 // Speech queue — each item plays only after the previous finishes
 const speechQueue = [];
 let isSpeaking = false;
 
-function speak(text) {
-  speechQueue.push(text);
+function speak(clipNames) {
+  speechQueue.push(clipNames);
   if (!isSpeaking) processQueue();
 }
 
@@ -205,140 +276,63 @@ async function processQueue() {
   }
 
   isSpeaking = true;
-  const text = speechQueue.shift();
-  const apiKey = getElevenLabsKey();
-  const voiceId = getElevenLabsVoiceId();
+  const clipNames = speechQueue.shift();
 
-  if (apiKey && voiceId) {
-    await playElevenLabs(text, apiKey, voiceId);
-  } else {
-    await playBrowser(text);
+  if (voiceReady) {
+    const buffers = clipNames
+      .map(name => audioBuffers.get(name))
+      .filter(Boolean);
+    await playBufferSequence(buffers);
   }
 
   processQueue();
 }
 
-function playBrowser(text) {
-  return new Promise(resolve => {
-    if (!window.speechSynthesis) { resolve(); return; }
-    speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.onend = resolve;
-    utterance.onerror = resolve;
-    speechSynthesis.speak(utterance);
-  });
-}
-
-async function playElevenLabs(text, apiKey, voiceId) {
-  if (!voiceId) return playBrowser(text);
-
-  // Stop any currently playing audio
-  if (currentAudio) {
-    currentAudio.pause();
-    currentAudio = null;
-  }
-
-  // Check cache (keyed by voice+text)
-  const cacheKey = voiceId + ':' + text;
-  let audioUrl = audioCache.get(cacheKey);
-
-  if (!audioUrl) {
-    try {
-      const res = await fetch(
-
-        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-        {
-          method: 'POST',
-          headers: {
-            'xi-api-key': apiKey,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            text: text,
-            model_id: ELEVENLABS_MODEL,
-            voice_settings: {
-              stability: 0.5,
-              similarity_boost: 0.75,
-            },
-          }),
-        }
-      );
-
-      if (!res.ok) {
-        console.warn('ElevenLabs API error:', res.status, await res.text().catch(() => ''));
-        return playBrowser(text);
-      }
-
-      const blob = await res.blob();
-      audioUrl = URL.createObjectURL(blob);
-      audioCache.set(cacheKey, audioUrl);
-    } catch (err) {
-      console.warn('ElevenLabs fetch error:', err);
-      return playBrowser(text);
-    }
-  }
-
-  return new Promise(resolve => {
-    const audio = new Audio(audioUrl);
-    currentAudio = audio;
-    audio.onended = resolve;
-    audio.onerror = () => {
-      console.warn('Audio play failed');
-      resolve();
-    };
-    audio.play().catch(err => {
-      console.warn('Audio play failed:', err);
-      playBrowser(text).then(resolve);
-    });
-  });
-}
-
-// Direct call for test button (skips queue)
-async function speakElevenLabs(text, apiKey, voiceId) {
-  return playElevenLabs(text, apiKey, voiceId);
-}
-
-function numberToWords(n) {
+// Convert a number (0-180) to an array of clip names
+function numberToClips(n) {
   const ones = ['zero','one','two','three','four','five','six','seven','eight','nine',
     'ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
   const tens = ['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
 
-  if (n < 20) return ones[n];
+  if (n < 20) return [ones[n]];
   if (n < 100) {
-    return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
+    const clips = [tens[Math.floor(n / 10)]];
+    if (n % 10) clips.push(ones[n % 10]);
+    return clips;
   }
   const h = Math.floor(n / 100);
   const remainder = n % 100;
-  return ones[h] + ' hundred' + (remainder ? ' and ' + numberToWords(remainder) : '');
+  const clips = [ones[h], 'hundred'];
+  if (remainder) {
+    clips.push('and');
+    clips.push(...numberToClips(remainder));
+  }
+  return clips;
 }
 
 function announceScore(points, busted) {
   if (busted) {
-    speak('Bust!');
+    speak(['bust']);
     return;
   }
   if (points === 180) {
-    speak('One hundred and eighty!');
-  } else if (points >= 140) {
-    speak(numberToWords(points) + '!');
+    speak(['one-hundred-and-eighty']);
   } else if (points === 0) {
-    speak('No score');
+    speak(['no-score']);
   } else {
-    speak(numberToWords(points));
+    speak(numberToClips(points));
   }
 }
 
 function announceCheckout(player) {
   const checkout = getCheckoutSuggestion(player.score);
   if (checkout) {
-    speak(player.name + ' you require ' + numberToWords(player.score));
+    speak(['you-require', ...numberToClips(player.score)]);
   }
 }
 
-function announceWinner(playerName) {
-  speak('Game shot and the match! ' + playerName);
+function announceWinner() {
+  speak(['game-shot-and-the-match']);
 }
 
 function playEventAudio(event) {
@@ -347,33 +341,33 @@ function playEventAudio(event) {
       announceScore(event.points, false);
       if (event.checkoutPlayerScore && event.checkoutPlayerName) {
         const co = getCheckoutSuggestion(event.checkoutPlayerScore);
-        if (co) speak(event.checkoutPlayerName + ' you require ' + numberToWords(event.checkoutPlayerScore));
+        if (co) speak(['you-require', ...numberToClips(event.checkoutPlayerScore)]);
       }
       break;
     case 'bust':
       announceScore(event.points, true);
       if (event.checkoutPlayerScore && event.checkoutPlayerName) {
         const co = getCheckoutSuggestion(event.checkoutPlayerScore);
-        if (co) speak(event.checkoutPlayerName + ' you require ' + numberToWords(event.checkoutPlayerScore));
+        if (co) speak(['you-require', ...numberToClips(event.checkoutPlayerScore)]);
       }
       break;
     case 'legWon':
       legWonAudio.currentTime = 0;
       legWonAudio.play().catch(() => {});
-      speak('Game shot and the leg! ' + event.playerName);
+      speak(['game-shot-and-the-leg']);
       break;
     case 'setWon':
       legWonAudio.currentTime = 0;
       legWonAudio.play().catch(() => {});
-      speak('Game shot and the set! ' + event.playerName);
+      speak(['game-shot-and-the-set']);
       break;
     case 'matchWon':
       legWonAudio.currentTime = 0;
       legWonAudio.play().catch(() => {});
-      announceWinner(event.playerName);
+      announceWinner();
       break;
     case 'gameStart':
-      speak('Game on! ' + event.playerName + ' to throw first');
+      speak(['game-on']);
       break;
   }
 }
@@ -443,19 +437,39 @@ const firebaseConfig = {
 
 let db = null;
 let roomCode = null;
+let isHost = false;
 let unsubscribeGame = null;
 let isOnline = false;
 let lastProcessedEventId = null;
+let firebaseAvailable = false;
 
 function initFirebase() {
-  firebase.initializeApp(firebaseConfig);
-  db = firebase.firestore();
+  try {
+    if (typeof firebase === 'undefined' || !ENV.FIREBASE_API_KEY) {
+      console.warn('Firebase not available — online play disabled');
+      disableOnlinePlayUI();
+      return;
+    }
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    firebaseAvailable = true;
+  } catch (err) {
+    console.error('Firebase init failed:', err);
+    disableOnlinePlayUI();
+  }
+}
+
+function disableOnlinePlayUI() {
+  const hostBtn = document.getElementById('host-btn');
+  const joinBtn = document.getElementById('join-btn');
+  if (hostBtn) { hostBtn.disabled = true; hostBtn.title = 'Online play unavailable'; }
+  if (joinBtn) { joinBtn.disabled = true; joinBtn.title = 'Online play unavailable'; }
 }
 
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   let code = '';
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     code += chars[Math.floor(Math.random() * chars.length)];
   }
   return code;
@@ -463,7 +477,35 @@ function generateRoomCode() {
 
 async function hostGame() {
   if (isOnline) return;
-  roomCode = generateRoomCode();
+  if (!firebaseAvailable) {
+    showMessage('Online play is unavailable');
+    return;
+  }
+
+  // Generate a unique room code with collision detection
+  let code;
+  let attempts = 0;
+  let found = false;
+  do {
+    code = generateRoomCode();
+    try {
+      const existing = await db.collection('games').doc(code).get();
+      if (!existing.exists) { found = true; break; }
+    } catch (err) {
+      showMessage('Network error — check your connection');
+      console.error(err);
+      return;
+    }
+    attempts++;
+  } while (attempts < 5);
+
+  if (!found) {
+    showMessage('Could not create room — try again');
+    return;
+  }
+
+  roomCode = code;
+  isHost = true;
   try {
     await db.collection('games').doc(roomCode).set({
       status: 'waiting',
@@ -492,13 +534,18 @@ async function hostGame() {
     });
   } catch (err) {
     showMessage('Failed to create room');
+    isHost = false;
     console.error(err);
   }
 }
 
 async function joinRoom(code) {
+  if (!firebaseAvailable) {
+    showMessage('Online play is unavailable');
+    return;
+  }
   code = code.toUpperCase().trim();
-  if (!code || code.length < 4) {
+  if (!code || code.length < 6) {
     showMessage('Enter a valid room code');
     return;
   }
@@ -508,11 +555,24 @@ async function joinRoom(code) {
       showMessage('Room not found');
       return;
     }
+
+    // Check if room is stale (older than 4 hours)
+    const data = doc.data();
+    if (data.createdAt) {
+      const ageMs = Date.now() - data.createdAt.toMillis();
+      if (ageMs > 4 * 60 * 60 * 1000) {
+        showMessage('Room has expired');
+        // Clean up stale room
+        db.collection('games').doc(code).delete().catch(() => {});
+        return;
+      }
+    }
+
     roomCode = code;
+    isHost = false;
     isOnline = true;
     await db.collection('games').doc(roomCode).update({ joined: true });
 
-    const data = doc.data();
     if (data.game && !data.game.gameOver) {
       game = data.game;
       showScreen('game-screen');
@@ -563,6 +623,10 @@ function subscribeToGame() {
       showRoomCodeOnGameScreen();
       render();
     }
+  }, err => {
+    console.error('Game subscription error:', err);
+    showMessage('Connection lost — returning to setup');
+    leaveRoom();
   });
 }
 
@@ -580,12 +644,45 @@ function showRoomCodeOnGameScreen() {
   }
 }
 
+let syncRetryCount = 0;
+const MAX_SYNC_RETRIES = 3;
+
 function syncGameToFirestore() {
   if (!isOnline || !roomCode || !game) return;
   const gameData = JSON.parse(JSON.stringify(game));
-  db.collection('games').doc(roomCode).update({ game: gameData }).catch(err => {
+  db.collection('games').doc(roomCode).update({ game: gameData }).then(() => {
+    syncRetryCount = 0;
+  }).catch(err => {
     console.error('Failed to sync game:', err);
+    syncRetryCount++;
+    if (syncRetryCount >= MAX_SYNC_RETRIES) {
+      showMessage('Connection lost — scores may not sync');
+      syncRetryCount = 0;
+    }
   });
+}
+
+async function shareRoomCode() {
+  if (!roomCode) return;
+  const text = `Join my darts game! Room code: ${roomCode}`;
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ text, url: window.location.href });
+    } catch (err) {
+      if (err.name !== 'AbortError') console.error('Share failed:', err);
+    }
+  } else if (navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(text);
+      const btn = document.getElementById('share-room-btn');
+      const original = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = original; }, 2000);
+    } catch {
+      showMessage('Failed to copy');
+    }
+  }
 }
 
 function leaveRoom() {
@@ -593,9 +690,17 @@ function leaveRoom() {
     unsubscribeGame();
     unsubscribeGame = null;
   }
+  // Host cleans up the Firestore room document
+  if (isHost && roomCode && db) {
+    db.collection('games').doc(roomCode).delete().catch(err => {
+      console.warn('Failed to delete room:', err);
+    });
+  }
   roomCode = null;
   isOnline = false;
+  isHost = false;
   lastProcessedEventId = null;
+  syncRetryCount = 0;
   document.getElementById('room-info').style.display = 'none';
   document.getElementById('waiting-overlay').style.display = 'none';
   document.getElementById('game-room-info').style.display = 'none';
@@ -776,6 +881,12 @@ function submitScore(points) {
 function undoLastThrow() {
   if (game.gameOver) return;
 
+  // Only the host can undo in online games to prevent conflicts
+  if (isOnline && !isHost) {
+    showMessage('Only the host can undo');
+    return;
+  }
+
   // Undo goes to the previous player's last throw
   const prevIndex = (game.currentPlayer - 1 + game.players.length) % game.players.length;
   const player = game.players[prevIndex];
@@ -824,13 +935,20 @@ function switchPlayer() {
   game.currentPlayer = (game.currentPlayer + 1) % game.players.length;
 }
 
+let messageTimeout = null;
+
 function showMessage(msg) {
   const el = document.getElementById('message');
+  if (messageTimeout) clearTimeout(messageTimeout);
+  el.classList.remove('visible');
+  // Force reflow so the re-add triggers the transition
+  void el.offsetWidth;
   el.textContent = msg;
   el.classList.add('visible');
-  setTimeout(() => {
+  messageTimeout = setTimeout(() => {
     el.classList.remove('visible');
-  }, 2000);
+    messageTimeout = null;
+  }, 2500);
 }
 
 function focusScoreInput() {
@@ -973,6 +1091,12 @@ function loadHistory() {
   }
 }
 
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 function renderHistory() {
   const history = loadHistory();
   const container = document.getElementById('match-history');
@@ -993,7 +1117,8 @@ function renderHistory() {
 
     const resultParts = players.map(p => {
       const detail = p.sets !== undefined ? p.sets + ' sets' : p.finalScore;
-      return `<span class="${g.winner === p.name ? 'history-winner' : ''}">${p.name} (${detail})</span>`;
+      const safeName = escapeHtml(p.name);
+      return `<span class="${g.winner === p.name ? 'history-winner' : ''}">${safeName} (${detail})</span>`;
     }).join('<span class="history-vs">vs</span>');
 
     const avgParts = players.map(p => p.average).join(' - ');
@@ -1021,6 +1146,7 @@ function clearHistory() {
 // ============================================================
 
 function init() {
+  initTheme();
   initFirebase();
 
   // Load saved player names
@@ -1035,8 +1161,12 @@ function init() {
   // Sets selector
   document.querySelectorAll('.set-option').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.set-option').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.set-option').forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-checked', 'false');
+      });
       btn.classList.add('active');
+      btn.setAttribute('aria-checked', 'true');
     });
   });
 
@@ -1051,13 +1181,24 @@ function init() {
   // Submit score
   document.getElementById('submit-btn').addEventListener('click', () => {
     const input = document.getElementById('score-input');
+    const btn = document.getElementById('submit-btn');
     const val = parseInt(input.value, 10);
     if (isNaN(val)) {
       showMessage('Enter a valid number');
       return;
     }
     input.value = '';
+    if (isOnline) {
+      btn.disabled = true;
+      btn.classList.add('btn-loading');
+    }
     submitScore(val);
+    if (isOnline) {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.classList.remove('btn-loading');
+      }, 600);
+    }
   });
 
   // Enter key submits score, spacebar submits 0
@@ -1076,11 +1217,6 @@ function init() {
   });
   document.getElementById('player2-name').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') document.getElementById('start-btn').click();
-  });
-
-  // Enter key on API key input saves it
-  document.getElementById('elevenlabs-key').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') document.getElementById('save-key-btn').click();
   });
 
   // Undo button
@@ -1117,61 +1253,51 @@ function init() {
     if (e.key === 'Enter') document.getElementById('join-btn').click();
   });
   document.getElementById('leave-room-btn').addEventListener('click', leaveRoom);
+  document.getElementById('share-room-btn').addEventListener('click', shareRoomCode);
 
   // Bull-up buttons
   document.getElementById('bullup-p1').addEventListener('click', () => completeBullUp(0));
   document.getElementById('bullup-p2').addEventListener('click', () => completeBullUp(1));
 
   // Voice settings
-  audioCache.clear();
+  preloadVoiceClips().then(() => {
+    const status = document.getElementById('voice-status');
+    if (voiceReady) {
+      status.textContent = `${audioBuffers.size} clips loaded`;
+      status.classList.add('status-ok');
+    } else {
+      status.textContent = 'No voice clips found';
+      status.classList.add('status-err');
+    }
+  });
 
-  const savedKey = getElevenLabsKey();
-  if (savedKey) {
-    document.getElementById('elevenlabs-key').value = savedKey;
-    document.getElementById('voice-status').textContent = 'Key saved';
-    document.getElementById('voice-status').classList.add('status-ok');
-  }
-
-  document.getElementById('settings-toggle').addEventListener('click', () => {
+  const settingsToggle = document.getElementById('settings-toggle');
+  function toggleSettings() {
     const body = document.getElementById('settings-body');
     const arrow = document.getElementById('settings-arrow');
     body.classList.toggle('collapsed');
     arrow.classList.toggle('open');
-  });
-
-  document.getElementById('save-key-btn').addEventListener('click', () => {
-    const key = document.getElementById('elevenlabs-key').value.trim();
-    const status = document.getElementById('voice-status');
-    if (key) {
-      localStorage.setItem('darts501_elevenlabs_key', key);
-      audioCache.clear();
-      status.textContent = 'Key saved';
-      status.classList.remove('status-err');
-      status.classList.add('status-ok');
-    } else {
-      localStorage.removeItem('darts501_elevenlabs_key');
-      status.textContent = 'Key removed — using browser voice';
-      status.classList.remove('status-ok', 'status-err');
+    const expanded = !body.classList.contains('collapsed');
+    settingsToggle.setAttribute('aria-expanded', String(expanded));
+  }
+  settingsToggle.addEventListener('click', toggleSettings);
+  settingsToggle.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggleSettings();
     }
   });
 
   document.getElementById('test-voice-btn').addEventListener('click', () => {
     const status = document.getElementById('voice-status');
-    const key = document.getElementById('elevenlabs-key').value.trim();
-    if (key) {
-      localStorage.setItem('darts501_elevenlabs_key', key);
-      status.textContent = 'Testing...';
-      status.classList.remove('status-ok', 'status-err');
-      speakElevenLabs('One hundred and eighty!', key, DEFAULT_VOICE_ID).then(() => {
-        status.textContent = 'Working!';
-        status.classList.add('status-ok');
-      }).catch(() => {
-        status.textContent = 'Error — check your key';
-        status.classList.add('status-err');
-      });
+    if (voiceReady) {
+      speak(['one-hundred-and-eighty']);
+      status.textContent = 'Playing...';
+      status.classList.remove('status-err');
+      status.classList.add('status-ok');
     } else {
-      playBrowser('One hundred and eighty!');
-      status.textContent = 'Browser voice (no API key)';
+      status.textContent = 'No voice clips available';
+      status.classList.add('status-err');
     }
   });
 
@@ -1179,5 +1305,15 @@ function init() {
   renderHistory();
   showScreen('setup-screen');
 }
+
+// Clean up Firestore room if host closes/reloads the page
+window.addEventListener('beforeunload', () => {
+  if (isHost && roomCode && db) {
+    // Use a synchronous-ish approach for cleanup on page unload
+    const docRef = db.collection('games').doc(roomCode);
+    // navigator.sendBeacon is not available for Firestore, so we do a fire-and-forget delete
+    docRef.delete().catch(() => {});
+  }
+});
 
 document.addEventListener('DOMContentLoaded', init);

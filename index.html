@@ -5,14 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Darts 501</title>
   <link rel="stylesheet" href="css/style.css">
+  <script>
+    // Apply saved theme immediately to prevent flash of default theme
+    (function() {
+      var t = localStorage.getItem('darts501_theme');
+      if (t && t !== 'default') document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
 </head>
 <body>
 
   <!-- Toast message -->
-  <div id="message"></div>
+  <div id="message" role="alert" aria-live="assertive"></div>
 
   <!-- Score Overlay -->
-  <div id="score-overlay">
+  <div id="score-overlay" aria-hidden="true">
     <div id="score-overlay-text"></div>
   </div>
 
@@ -21,8 +28,8 @@
     <h1 class="app-title">DARTS <span>501</span></h1>
     <p class="app-subtitle">Double-out scoring</p>
 
-    <div class="setup-card">
-      <h2>Players</h2>
+    <div class="setup-card" role="group" aria-labelledby="players-heading">
+      <h2 id="players-heading">Players</h2>
       <div class="input-group">
         <label for="player1-name">Player 1</label>
         <input type="text" id="player1-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
@@ -32,46 +39,79 @@
         <input type="text" id="player2-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
       </div>
       <div class="input-group">
-        <label>Best of Sets</label>
-        <div class="sets-selector" id="sets-selector">
-          <button class="set-option" data-sets="1">1</button>
-          <button class="set-option active" data-sets="3">3</button>
-          <button class="set-option" data-sets="5">5</button>
-          <button class="set-option" data-sets="7">7</button>
+        <label id="sets-label">Best of Sets</label>
+        <div class="sets-selector" id="sets-selector" role="radiogroup" aria-labelledby="sets-label">
+          <button class="set-option" data-sets="1" role="radio" aria-checked="false">1</button>
+          <button class="set-option active" data-sets="3" role="radio" aria-checked="true">3</button>
+          <button class="set-option" data-sets="5" role="radio" aria-checked="false">5</button>
+          <button class="set-option" data-sets="7" role="radio" aria-checked="false">7</button>
         </div>
       </div>
       <button id="start-btn" class="btn btn-primary">Start Game</button>
     </div>
 
-    <div class="setup-card" id="online-card">
-      <h2>Online Play</h2>
+    <div class="setup-card" id="online-card" role="group" aria-labelledby="online-heading">
+      <h2 id="online-heading">Online Play</h2>
       <div class="online-actions">
         <button id="host-btn" class="btn btn-secondary">Host Game</button>
         <div class="online-join-row">
-          <input type="text" id="join-code" placeholder="" maxlength="4" autocomplete="off">
+          <input type="text" id="join-code" placeholder="" maxlength="6" autocomplete="off" aria-label="Room code">
           <button id="join-btn" class="btn btn-secondary">Join</button>
         </div>
       </div>
       <div id="room-info" class="room-info" style="display:none">
         <div class="room-code-label">Room Code</div>
         <div class="room-code" id="room-code-display"></div>
+        <button id="share-room-btn" class="btn btn-secondary btn-small">Share</button>
         <div class="room-hint">Share this code with other players</div>
       </div>
     </div>
 
+    <div class="setup-card" role="group" aria-labelledby="theme-heading">
+      <h2 id="theme-heading">Theme</h2>
+      <div class="theme-selector" id="theme-selector">
+        <button class="theme-btn active" data-theme="default">
+          <div class="theme-swatch">
+            <span style="background:#1a1a2e"></span>
+            <span style="background:#e94560"></span>
+            <span style="background:#00b894"></span>
+          </div>
+          Dark
+        </button>
+        <button class="theme-btn" data-theme="light">
+          <div class="theme-swatch">
+            <span style="background:#f0f2f5"></span>
+            <span style="background:#d63031"></span>
+            <span style="background:#00b894"></span>
+          </div>
+          Light
+        </button>
+        <button class="theme-btn" data-theme="pub">
+          <div class="theme-swatch">
+            <span style="background:#1a3c1a"></span>
+            <span style="background:#d4a017"></span>
+            <span style="background:#8bc34a"></span>
+          </div>
+          Pub
+        </button>
+        <button class="theme-btn" data-theme="redblack">
+          <div class="theme-swatch">
+            <span style="background:#0d0d0d"></span>
+            <span style="background:#ff1744"></span>
+            <span style="background:#ff5252"></span>
+          </div>
+          Red
+        </button>
+      </div>
+    </div>
+
     <div class="setup-card">
-      <div class="settings-header" id="settings-toggle">
+      <div class="settings-header" id="settings-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="settings-body">
         <h2>Voice Settings</h2>
-        <span class="settings-arrow" id="settings-arrow">&#9654;</span>
+        <span class="settings-arrow" id="settings-arrow" aria-hidden="true">&#9654;</span>
       </div>
       <div id="settings-body" class="settings-body collapsed">
-        <p class="settings-hint">Add an <a href="https://elevenlabs.io" target="_blank" rel="noopener">ElevenLabs</a> API key for natural voice announcements. Free tier available. Without a key, the browser's built-in voice is used.</p>
-        <div class="input-group">
-          <label for="elevenlabs-key">API Key</label>
-          <input type="password" id="elevenlabs-key" placeholder="Enter ElevenLabs API key..." autocomplete="off">
-        </div>
         <div class="settings-actions">
-          <button id="save-key-btn" class="btn btn-secondary btn-small">Save</button>
           <button id="test-voice-btn" class="btn btn-secondary btn-small">Test Voice</button>
           <span id="voice-status" class="voice-status"></span>
         </div>
@@ -88,9 +128,9 @@
   </div>
 
   <!-- Bull-Up Overlay (nearest to bull throws first) -->
-  <div id="bullup-overlay" class="bullup-overlay" style="display:none">
+  <div id="bullup-overlay" class="bullup-overlay" role="dialog" aria-labelledby="bullup-title" style="display:none">
     <div class="bullup-card">
-      <h2>Nearest the Bull</h2>
+      <h2 id="bullup-title">Nearest the Bull</h2>
       <p>Who was closest?</p>
       <div class="bullup-buttons">
         <button id="bullup-p1" class="btn btn-primary bullup-btn"></button>
@@ -100,9 +140,9 @@
   </div>
 
   <!-- Waiting Overlay (shown when viewer joins before game starts) -->
-  <div id="waiting-overlay" class="waiting-overlay" style="display:none">
+  <div id="waiting-overlay" class="waiting-overlay" role="status" aria-live="polite" style="display:none">
     <div class="waiting-card">
-      <div class="waiting-spinner"></div>
+      <div class="waiting-spinner" aria-hidden="true"></div>
       <div class="waiting-text">Waiting for host to start...</div>
       <div class="waiting-room">Room: <strong id="waiting-room-code"></strong></div>
       <button id="leave-room-btn" class="btn btn-secondary btn-small">Leave Room</button>
@@ -114,9 +154,9 @@
     <div id="game-room-info" class="game-room-info" style="display:none">
       Room: <strong id="game-room-code"></strong>
     </div>
-    <div id="turn-indicator"></div>
+    <div id="turn-indicator" role="status" aria-live="polite"></div>
 
-    <div class="scoreboard">
+    <div class="scoreboard" role="region" aria-label="Scoreboard">
       <!-- Player 1 -->
       <div id="player1-panel" class="player-panel">
         <div class="player-name" id="p1-name"></div>
@@ -158,16 +198,16 @@
     <!-- Score Input -->
     <div class="input-section">
       <div class="score-input-row">
-        <input type="number" id="score-input" placeholder="Score" min="0" max="180" inputmode="numeric" autocomplete="off">
-        <button id="submit-btn" class="btn btn-submit">OK</button>
+        <input type="number" id="score-input" placeholder="Score" min="0" max="180" inputmode="numeric" autocomplete="off" aria-label="Enter score (0-180)">
+        <button id="submit-btn" class="btn btn-submit" aria-label="Submit score">OK</button>
       </div>
       <div class="action-row">
-        <button id="undo-btn" class="btn btn-undo">Undo</button>
+        <button id="undo-btn" class="btn btn-undo" aria-label="Undo last throw">Undo</button>
       </div>
     </div>
 
     <!-- Visit History -->
-    <div class="history-table-section">
+    <div class="history-table-section" role="region" aria-label="Round history">
       <h3>Round History</h3>
       <div id="history-container">
         <table class="visit-table">
@@ -187,9 +227,9 @@
   <!-- ==================== Game Over Screen ==================== -->
   <div id="gameover-screen" class="screen">
     <div class="gameover-card">
-      <div class="trophy">&#127942;</div>
+      <div class="trophy" aria-hidden="true">&#127942;</div>
       <div class="winner-title">Winner</div>
-      <div id="winner-name"></div>
+      <div id="winner-name" aria-live="polite"></div>
     </div>
 
     <div class="final-stats">
