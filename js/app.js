@@ -714,28 +714,35 @@ function leaveRoom() {
 // Game state
 let game = null;
 
-function createPlayer(name) {
+function createPlayer(name, startingScore) {
   return {
     name: name,
-    score: 501,
+    score: startingScore,
     darts: 0,
     visits: [],
     legs: 0,
     sets: 0,
     matchDarts: 0,
     matchVisits: [],
+    checkouts: [],
   };
 }
 
-function startGame(name1, name2, bestOfSets) {
+function startGame(name1, name2, bestOfSets, startingScore) {
+  const score = startingScore || 501;
   game = {
-    players: [createPlayer(name1), createPlayer(name2)],
+    players: [createPlayer(name1, score), createPlayer(name2, score)],
     currentPlayer: 0,
     legStartingPlayer: 0,
     bestOfSets: bestOfSets || 3,
+    startingScore: score,
     gameOver: false,
     winner: null,
   };
+
+  for (const p of game.players) {
+    p.histStats = getHistoricalStats(p.name);
+  }
 
   localStorage.setItem('darts501_playerNames', JSON.stringify([name1, name2]));
 
@@ -772,7 +779,7 @@ function startNewLeg() {
   for (const p of game.players) {
     p.matchDarts += p.darts;
     p.matchVisits = p.matchVisits.concat(p.visits);
-    p.score = 501;
+    p.score = game.startingScore;
     p.darts = 0;
     p.visits = [];
   }
@@ -829,6 +836,10 @@ function submitScore(points) {
   player.darts += 3;
 
   if (player.score === 0) {
+    player.checkouts.push(points);
+    if (player.histStats && points > (player.histStats.bestCheckout || 0)) {
+      player.histStats.bestCheckout = points;
+    }
     player.legs++;
     const setsToWin = Math.ceil(game.bestOfSets / 2);
 
@@ -988,6 +999,11 @@ function render() {
     document.getElementById(`p${idx}-average`).textContent = calculateAverage(p).toFixed(1);
     document.getElementById(`p${idx}-highest`).textContent = getHighestVisit(p);
 
+    const hs = p.histStats;
+    document.getElementById(`p${idx}-hist-avg`).textContent = hs && hs.allTimeAvg !== null ? hs.allTimeAvg : '-';
+    document.getElementById(`p${idx}-hist-last5`).textContent = hs && hs.last5Avg !== null ? hs.last5Avg : '-';
+    document.getElementById(`p${idx}-hist-checkout`).textContent = hs && hs.bestCheckout > 0 ? hs.bestCheckout : '-';
+
     const checkout = getCheckoutSuggestion(p.score);
     const checkoutEl = document.getElementById(`p${idx}-checkout`);
     if (checkout) {
@@ -1076,6 +1092,7 @@ function saveGame() {
       sets: p.sets,
       average: parseFloat(calculateAverage(p).toFixed(1)),
       dartsThrown: p.matchDarts,
+      bestCheckout: p.checkouts.length > 0 ? Math.max(...p.checkouts) : 0,
     })),
   };
   history.push(entry);
@@ -1089,6 +1106,19 @@ function loadHistory() {
   } catch {
     return [];
   }
+}
+
+function getHistoricalStats(playerName) {
+  const history = loadHistory();
+  const games = history
+    .map(e => e.players.find(p => p.name === playerName))
+    .filter(Boolean);
+  if (games.length === 0) return { allTimeAvg: null, last5Avg: null, bestCheckout: 0 };
+  const allTimeAvg = (games.reduce((s, p) => s + p.average, 0) / games.length).toFixed(1);
+  const last5 = games.slice(-5);
+  const last5Avg = (last5.reduce((s, p) => s + p.average, 0) / last5.length).toFixed(1);
+  const bestCheckout = Math.max(0, ...games.map(p => p.bestCheckout || 0));
+  return { allTimeAvg, last5Avg, bestCheckout };
 }
 
 function escapeHtml(str) {
@@ -1170,12 +1200,25 @@ function init() {
     });
   });
 
+  // Score selector
+  document.querySelectorAll('.score-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.score-option').forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-checked', 'false');
+      });
+      btn.classList.add('active');
+      btn.setAttribute('aria-checked', 'true');
+    });
+  });
+
   // Start game button
   document.getElementById('start-btn').addEventListener('click', () => {
     const name1 = document.getElementById('player1-name').value.trim() || 'Player 1';
     const name2 = document.getElementById('player2-name').value.trim() || 'Player 2';
     const bestOfSets = parseInt(document.querySelector('.set-option.active').dataset.sets, 10);
-    startGame(name1, name2, bestOfSets);
+    const startingScore = parseInt(document.querySelector('.score-option.active').dataset.score, 10);
+    startGame(name1, name2, bestOfSets, startingScore);
   });
 
   // Submit score
@@ -1236,7 +1279,7 @@ function init() {
   // Rematch button
   document.getElementById('rematch-btn').addEventListener('click', () => {
     if (game) {
-      startGame(game.players[0].name, game.players[1].name, game.bestOfSets);
+      startGame(game.players[0].name, game.players[1].name, game.bestOfSets, game.startingScore);
     }
   });
 

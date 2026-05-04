@@ -39,6 +39,13 @@
         <input type="text" id="player2-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
       </div>
       <div class="input-group">
+        <label id="score-label">Starting Score</label>
+        <div class="sets-selector" id="score-selector" role="radiogroup" aria-labelledby="score-label">
+          <button class="set-option score-option" data-score="301" role="radio" aria-checked="false">301</button>
+          <button class="set-option score-option active" data-score="501" role="radio" aria-checked="true">501</button>
+        </div>
+      </div>
+      <div class="input-group">
         <label id="sets-label">Best of Sets</label>
         <div class="sets-selector" id="sets-selector" role="radiogroup" aria-labelledby="sets-label">
           <button class="set-option" data-sets="1" role="radio" aria-checked="false">1</button>
@@ -194,6 +201,11 @@
           Avg: <strong id="p1-average">0.0</strong><br>
           Best: <strong id="p1-highest">0</strong>
         </div>
+        <div class="player-hist-stats">
+          All: <strong id="p1-hist-avg">-</strong> &nbsp;
+          L5: <strong id="p1-hist-last5">-</strong> &nbsp;
+          CO: <strong id="p1-hist-checkout">-</strong>
+        </div>
         <div class="checkout-hint" style="display:none">
           <span id="p1-checkout">-</span>
         </div>
@@ -211,6 +223,11 @@
           Darts: <strong id="p2-darts">0</strong><br>
           Avg: <strong id="p2-average">0.0</strong><br>
           Best: <strong id="p2-highest">0</strong>
+        </div>
+        <div class="player-hist-stats">
+          All: <strong id="p2-hist-avg">-</strong> &nbsp;
+          L5: <strong id="p2-hist-last5">-</strong> &nbsp;
+          CO: <strong id="p2-hist-checkout">-</strong>
         </div>
         <div class="checkout-hint" style="display:none">
           <span id="p2-checkout">-</span>

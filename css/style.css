@@ -797,6 +797,19 @@ button:focus-visible {
   color: var(--text);
 }
 
+.player-hist-stats {
+  font-size: clamp(0.7rem, 1.5vw, 0.9rem);
+  color: var(--text-dim);
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  opacity: 0.75;
+}
+
+.player-hist-stats strong {
+  color: var(--text);
+}
+
 .checkout-hint {
   margin-top: 10px;
   padding: clamp(10px, 2vw, 18px) clamp(14px, 3vw, 24px);
