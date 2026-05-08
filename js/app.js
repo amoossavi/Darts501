@@ -836,46 +836,7 @@ function submitScore(points) {
   player.darts += 3;
 
   if (player.score === 0) {
-    player.checkouts.push(points);
-    if (player.histStats && points > (player.histStats.bestCheckout || 0)) {
-      player.histStats.bestCheckout = points;
-    }
-    player.legs++;
-    const setsToWin = Math.ceil(game.bestOfSets / 2);
-
-    if (player.legs >= 2) {
-      // Won the set
-      player.sets++;
-      player.legs = 0;
-      // Reset other player's legs too
-      for (const p of game.players) {
-        if (p !== player) p.legs = 0;
-      }
-
-      if (player.sets >= setsToWin) {
-        // Won the match
-        // Accumulate final leg stats
-        for (const p of game.players) {
-          p.matchDarts += p.darts;
-          p.matchVisits = p.matchVisits.concat(p.visits);
-        }
-        game.gameOver = true;
-        game.winner = game.currentPlayer;
-        saveGame();
-        fireEvent({ id: Date.now(), type: 'matchWon', playerName: player.name });
-        syncGameToFirestore();
-        showGameOver();
-        return;
-      }
-
-      fireEvent({ id: Date.now(), type: 'setWon', playerName: player.name });
-    } else {
-      fireEvent({ id: Date.now(), type: 'legWon', playerName: player.name });
-    }
-
-    render();
-    syncGameToFirestore();
-    setTimeout(() => startNewLeg(), 2000);
+    showCheckoutDartsOverlay(player, points);
     return;
   }
 
@@ -887,6 +848,62 @@ function submitScore(points) {
   render();
   syncGameToFirestore();
   focusScoreInput();
+}
+
+function showCheckoutDartsOverlay(player, points) {
+  const overlay = document.getElementById('checkout-darts-overlay');
+  document.getElementById('checkout-darts-desc').textContent = `${player.name} checked out on ${points}. How many darts?`;
+  overlay.style.display = 'flex';
+  overlay.dataset.playerIndex = game.currentPlayer;
+  overlay.dataset.points = points;
+}
+
+function processCheckout(dartsUsed) {
+  const overlay = document.getElementById('checkout-darts-overlay');
+  overlay.style.display = 'none';
+
+  const player = game.players[parseInt(overlay.dataset.playerIndex)];
+  const points = parseInt(overlay.dataset.points);
+
+  // Adjust dart count (we already added 3)
+  player.darts += dartsUsed - 3;
+
+  player.checkouts.push(points);
+  if (player.histStats && points > (player.histStats.bestCheckout || 0)) {
+    player.histStats.bestCheckout = points;
+  }
+  player.legs++;
+  const setsToWin = Math.ceil(game.bestOfSets / 2);
+
+  if (player.legs >= 2) {
+    player.sets++;
+    player.legs = 0;
+    for (const p of game.players) {
+      if (p !== player) p.legs = 0;
+    }
+
+    if (player.sets >= setsToWin) {
+      for (const p of game.players) {
+        p.matchDarts += p.darts;
+        p.matchVisits = p.matchVisits.concat(p.visits);
+      }
+      game.gameOver = true;
+      game.winner = parseInt(overlay.dataset.playerIndex);
+      saveGame();
+      fireEvent({ id: Date.now(), type: 'matchWon', playerName: player.name });
+      syncGameToFirestore();
+      showGameOver();
+      return;
+    }
+
+    fireEvent({ id: Date.now(), type: 'setWon', playerName: player.name });
+  } else {
+    fireEvent({ id: Date.now(), type: 'legWon', playerName: player.name });
+  }
+
+  render();
+  syncGameToFirestore();
+  setTimeout(() => startNewLeg(), 2000);
 }
 
 function undoLastThrow() {
@@ -1188,27 +1205,17 @@ function init() {
     }
   } catch {}
 
-  // Sets selector
-  document.querySelectorAll('.set-option').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.set-option').forEach(b => {
-        b.classList.remove('active');
-        b.setAttribute('aria-checked', 'false');
+  // Radio-group selectors (sets and score) — scoped to each group so they don't clobber each other
+  document.querySelectorAll('.sets-selector').forEach(group => {
+    group.querySelectorAll('.set-option').forEach(btn => {
+      btn.addEventListener('click', () => {
+        group.querySelectorAll('.set-option').forEach(b => {
+          b.classList.remove('active');
+          b.setAttribute('aria-checked', 'false');
+        });
+        btn.classList.add('active');
+        btn.setAttribute('aria-checked', 'true');
       });
-      btn.classList.add('active');
-      btn.setAttribute('aria-checked', 'true');
-    });
-  });
-
-  // Score selector
-  document.querySelectorAll('.score-option').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.score-option').forEach(b => {
-        b.classList.remove('active');
-        b.setAttribute('aria-checked', 'false');
-      });
-      btn.classList.add('active');
-      btn.setAttribute('aria-checked', 'true');
     });
   });
 
@@ -1297,6 +1304,11 @@ function init() {
   });
   document.getElementById('leave-room-btn').addEventListener('click', leaveRoom);
   document.getElementById('share-room-btn').addEventListener('click', shareRoomCode);
+
+  // Checkout darts buttons
+  document.querySelectorAll('.checkout-darts-btn').forEach(btn => {
+    btn.addEventListener('click', () => processCheckout(parseInt(btn.dataset.darts)));
+  });
 
   // Bull-up buttons
   document.getElementById('bullup-p1').addEventListener('click', () => completeBullUp(0));

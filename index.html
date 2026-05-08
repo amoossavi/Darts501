@@ -158,6 +158,19 @@
     </div>
   </div>
 
+  <!-- Checkout Darts Overlay -->
+  <div id="checkout-darts-overlay" class="bullup-overlay" role="dialog" aria-labelledby="checkout-darts-title" style="display:none">
+    <div class="bullup-card">
+      <h2 id="checkout-darts-title">Checkout!</h2>
+      <p id="checkout-darts-desc">How many darts to finish?</p>
+      <div class="bullup-buttons">
+        <button class="btn btn-primary bullup-btn checkout-darts-btn" data-darts="1">1</button>
+        <button class="btn btn-primary bullup-btn checkout-darts-btn" data-darts="2">2</button>
+        <button class="btn btn-primary bullup-btn checkout-darts-btn" data-darts="3">3</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Bull-Up Overlay (nearest to bull throws first) -->
   <div id="bullup-overlay" class="bullup-overlay" role="dialog" aria-labelledby="bullup-title" style="display:none">
     <div class="bullup-card">
@@ -187,9 +200,9 @@
     </div>
     <div id="turn-indicator" role="status" aria-live="polite"></div>
 
-    <div class="scoreboard" role="region" aria-label="Scoreboard">
+    <div class="game-layout">
       <!-- Player 1 -->
-      <div id="player1-panel" class="player-panel">
+      <div id="player1-panel" class="player-panel" role="region" aria-label="Player 1">
         <div class="player-name" id="p1-name"></div>
         <div class="player-legs-sets">
           <span>Sets: <strong id="p1-sets">0</strong></span>
@@ -211,8 +224,25 @@
         </div>
       </div>
 
+      <!-- Round History (centre column) -->
+      <div class="history-table-section" role="region" aria-label="Round history">
+        <h3>Round History</h3>
+        <div id="history-container">
+          <table class="visit-table">
+            <thead>
+              <tr>
+                <th id="hist-p1-name">P1</th>
+                <th>Rd</th>
+                <th id="hist-p2-name">P2</th>
+              </tr>
+            </thead>
+            <tbody id="history-body"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Player 2 -->
-      <div id="player2-panel" class="player-panel">
+      <div id="player2-panel" class="player-panel" role="region" aria-label="Player 2">
         <div class="player-name" id="p2-name"></div>
         <div class="player-legs-sets">
           <span>Sets: <strong id="p2-sets">0</strong></span>
@@ -233,7 +263,6 @@
           <span id="p2-checkout">-</span>
         </div>
       </div>
-
     </div>
 
     <!-- Score Input -->
@@ -244,23 +273,6 @@
       </div>
       <div class="action-row">
         <button id="undo-btn" class="btn btn-undo" aria-label="Undo last throw">Undo</button>
-      </div>
-    </div>
-
-    <!-- Visit History -->
-    <div class="history-table-section" role="region" aria-label="Round history">
-      <h3>Round History</h3>
-      <div id="history-container">
-        <table class="visit-table">
-          <thead>
-            <tr>
-              <th id="hist-p1-name">P1</th>
-              <th>Rd</th>
-              <th id="hist-p2-name">P2</th>
-            </tr>
-          </thead>
-          <tbody id="history-body"></tbody>
-        </table>
       </div>
     </div>
   </div>
