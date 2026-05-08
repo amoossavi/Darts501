@@ -837,6 +837,14 @@ button:focus-visible {
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
+/* Around-the-World mode hides 501-specific stats and the checkout hint */
+.mode-around-world .player-legs-sets,
+.mode-around-world .player-stats,
+.mode-around-world .player-hist-stats,
+.mode-around-world .checkout-hint {
+  display: none !important;
+}
+
 /* ============================================================
    Score Input
    ============================================================ */
@@ -887,6 +895,36 @@ button:focus-visible {
 .score-input-row .btn {
   padding: 16px 28px;
   white-space: nowrap;
+}
+
+/* Hits input row (Around the World) */
+.hits-input-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.hit-btn {
+  flex: 1;
+  padding: 18px 0;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: clamp(1.4rem, 4vw, 2rem);
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+
+.hit-btn:hover {
+  border-color: var(--green);
+}
+
+.hit-btn:active {
+  transform: scale(0.96);
+  background: var(--green);
+  color: white;
 }
 
 .action-row {

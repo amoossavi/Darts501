@@ -718,6 +718,7 @@ function createPlayer(name, startingScore) {
   return {
     name: name,
     score: startingScore,
+    target: 1,
     darts: 0,
     visits: [],
     legs: 0,
@@ -728,7 +729,8 @@ function createPlayer(name, startingScore) {
   };
 }
 
-function startGame(name1, name2, bestOfSets, startingScore) {
+function startGame(name1, name2, bestOfSets, startingScore, mode) {
+  mode = mode || 'standard';
   const score = startingScore || 501;
   game = {
     players: [createPlayer(name1, score), createPlayer(name2, score)],
@@ -736,6 +738,7 @@ function startGame(name1, name2, bestOfSets, startingScore) {
     legStartingPlayer: 0,
     bestOfSets: bestOfSets || 3,
     startingScore: score,
+    mode: mode,
     gameOver: false,
     winner: null,
   };
@@ -850,6 +853,35 @@ function submitScore(points) {
   focusScoreInput();
 }
 
+function submitHits(n) {
+  if (!game || game.gameOver) return;
+  if (game.mode !== 'aroundWorld') return;
+  if (n < 0 || n > 3) return;
+
+  const player = getCurrentPlayer();
+  player.visits.push({ hits: n });
+  player.darts += 3;
+  player.target += n;
+
+  if (player.target > 20) {
+    for (const p of game.players) {
+      p.matchDarts += p.darts;
+      p.matchVisits = p.matchVisits.concat(p.visits);
+    }
+    game.gameOver = true;
+    game.winner = game.currentPlayer;
+    saveGame();
+    fireEvent({ id: Date.now(), type: 'matchWon', playerName: player.name });
+    syncGameToFirestore();
+    showGameOver();
+    return;
+  }
+
+  switchPlayer();
+  render();
+  syncGameToFirestore();
+}
+
 function showCheckoutDartsOverlay(player, points) {
   const overlay = document.getElementById('checkout-darts-overlay');
   document.getElementById('checkout-darts-desc').textContent = `${player.name} checked out on ${points}. How many darts?`;
@@ -927,7 +959,9 @@ function undoLastThrow() {
   const lastVisit = player.visits.pop();
   player.darts -= 3;
 
-  if (!lastVisit.busted) {
+  if (game.mode === 'aroundWorld') {
+    player.target -= lastVisit.hits;
+  } else if (!lastVisit.busted) {
     player.score += lastVisit.score;
   }
 
@@ -1001,6 +1035,11 @@ function showScreen(screenId) {
 function render() {
   if (!game) return;
 
+  const isAtW = game.mode === 'aroundWorld';
+  document.getElementById('game-screen').classList.toggle('mode-around-world', isAtW);
+  document.getElementById('score-input-row').style.display = isAtW ? 'none' : '';
+  document.getElementById('hits-input-row').style.display = isAtW ? '' : 'none';
+
   for (let i = 0; i < game.players.length; i++) {
     const p = game.players[i];
     const idx = i + 1;
@@ -1009,6 +1048,13 @@ function render() {
     panel.classList.toggle('active-player', game.currentPlayer === i);
 
     document.getElementById(`p${idx}-name`).textContent = p.name;
+
+    if (isAtW) {
+      document.getElementById(`p${idx}-score`).textContent = Math.min(p.target, 20);
+      document.getElementById(`p${idx}-darts`).textContent = p.matchDarts + p.darts;
+      continue;
+    }
+
     document.getElementById(`p${idx}-sets`).textContent = p.sets;
     document.getElementById(`p${idx}-legs`).textContent = p.legs;
     document.getElementById(`p${idx}-score`).textContent = p.score;
@@ -1034,7 +1080,9 @@ function render() {
 
   // Turn indicator
   const turnText = document.getElementById('turn-indicator');
-  turnText.textContent = `${getCurrentPlayer().name}'s turn`;
+  turnText.textContent = isAtW
+    ? `${getCurrentPlayer().name}'s turn — aim for ${getCurrentPlayer().target}`
+    : `${getCurrentPlayer().name}'s turn`;
 
   renderVisitHistory();
 }
@@ -1042,6 +1090,7 @@ function render() {
 function renderVisitHistory() {
   const tbody = document.getElementById('history-body');
   tbody.innerHTML = '';
+  const isAtW = game.mode === 'aroundWorld';
 
   const maxVisits = Math.max(game.players[0].visits.length, game.players[1].visits.length);
 
@@ -1053,8 +1102,12 @@ function renderVisitHistory() {
 
     const td1 = document.createElement('td');
     if (v1) {
-      td1.textContent = v1.busted ? `${v1.score} (BUST)` : v1.score;
-      if (v1.busted) td1.classList.add('bust');
+      if (isAtW) {
+        td1.textContent = v1.hits;
+      } else {
+        td1.textContent = v1.busted ? `${v1.score} (BUST)` : v1.score;
+        if (v1.busted) td1.classList.add('bust');
+      }
     }
 
     const tdRound = document.createElement('td');
@@ -1063,8 +1116,12 @@ function renderVisitHistory() {
 
     const td2 = document.createElement('td');
     if (v2) {
-      td2.textContent = v2.busted ? `${v2.score} (BUST)` : v2.score;
-      if (v2.busted) td2.classList.add('bust');
+      if (isAtW) {
+        td2.textContent = v2.hits;
+      } else {
+        td2.textContent = v2.busted ? `${v2.score} (BUST)` : v2.score;
+        if (v2.busted) td2.classList.add('bust');
+      }
     }
 
     row.appendChild(td1);
@@ -1080,15 +1137,22 @@ function renderVisitHistory() {
 
 function showGameOver() {
   document.getElementById('winner-name').textContent = game.players[game.winner].name;
+  const isAtW = game.mode === 'aroundWorld';
 
   for (let i = 0; i < game.players.length; i++) {
     const p = game.players[i];
     const idx = i + 1;
     document.getElementById(`go-p${idx}-name`).textContent = p.name;
-    document.getElementById(`go-p${idx}-sets`).textContent = p.sets;
     document.getElementById(`go-p${idx}-darts`).textContent = p.matchDarts;
-    document.getElementById(`go-p${idx}-average`).textContent = calculateAverage(p).toFixed(1);
-    document.getElementById(`go-p${idx}-highest`).textContent = getHighestVisit(p);
+    if (isAtW) {
+      document.getElementById(`go-p${idx}-sets`).textContent = `${Math.min(p.target - 1, 20)}/20`;
+      document.getElementById(`go-p${idx}-average`).textContent = '-';
+      document.getElementById(`go-p${idx}-highest`).textContent = '-';
+    } else {
+      document.getElementById(`go-p${idx}-sets`).textContent = p.sets;
+      document.getElementById(`go-p${idx}-average`).textContent = calculateAverage(p).toFixed(1);
+      document.getElementById(`go-p${idx}-highest`).textContent = getHighestVisit(p);
+    }
   }
 
   showScreen('gameover-screen');
@@ -1100,16 +1164,19 @@ function showGameOver() {
 
 function saveGame() {
   const history = loadHistory();
+  const isAtW = game.mode === 'aroundWorld';
   const entry = {
     date: new Date().toISOString(),
     winner: game.players[game.winner].name,
+    mode: game.mode,
     bestOfSets: game.bestOfSets,
     players: game.players.map(p => ({
       name: p.name,
-      sets: p.sets,
-      average: parseFloat(calculateAverage(p).toFixed(1)),
+      sets: isAtW ? null : p.sets,
+      average: isAtW ? null : parseFloat(calculateAverage(p).toFixed(1)),
       dartsThrown: p.matchDarts,
-      bestCheckout: p.checkouts.length > 0 ? Math.max(...p.checkouts) : 0,
+      bestCheckout: isAtW ? 0 : (p.checkouts.length > 0 ? Math.max(...p.checkouts) : 0),
+      target: isAtW ? p.target : null,
     })),
   };
   history.push(entry);
@@ -1127,9 +1194,12 @@ function loadHistory() {
 
 function getHistoricalStats(playerName) {
   const history = loadHistory();
+  // Only Standard 501/301 games contribute to historical averages — Around the World
+  // games don't have a meaningful per-dart average.
   const games = history
+    .filter(e => e.mode !== 'aroundWorld')
     .map(e => e.players.find(p => p.name === playerName))
-    .filter(Boolean);
+    .filter(p => p && typeof p.average === 'number');
   if (games.length === 0) return { allTimeAvg: null, last5Avg: null, bestCheckout: 0 };
   const allTimeAvg = (games.reduce((s, p) => s + p.average, 0) / games.length).toFixed(1);
   const last5 = games.slice(-5);
@@ -1161,20 +1231,28 @@ function renderHistory() {
 
     // Support both old 2-player format and new players array format
     const players = g.players || [g.player1, g.player2];
+    const isAtW = g.mode === 'aroundWorld';
 
     const resultParts = players.map(p => {
-      const detail = p.sets !== undefined ? p.sets + ' sets' : p.finalScore;
+      let detail;
+      if (isAtW) {
+        detail = g.winner === p.name ? 'Won' : `${Math.min((p.target || 1) - 1, 20)}/20`;
+      } else {
+        detail = p.sets !== undefined && p.sets !== null ? p.sets + ' sets' : p.finalScore;
+      }
       const safeName = escapeHtml(p.name);
       return `<span class="${g.winner === p.name ? 'history-winner' : ''}">${safeName} (${detail})</span>`;
     }).join('<span class="history-vs">vs</span>');
 
-    const avgParts = players.map(p => p.average).join(' - ');
+    const statsLine = isAtW
+      ? `Around the World — Darts: ${players.map(p => p.dartsThrown).join(' / ')}`
+      : `Avg: ${players.map(p => p.average).join(' - ')}`;
 
     html += `
       <div class="history-item">
         <div class="history-date">${date}</div>
         <div class="history-result">${resultParts}</div>
-        <div class="history-stats">Avg: ${avgParts}</div>
+        <div class="history-stats">${statsLine}</div>
       </div>
     `;
   }
@@ -1219,13 +1297,23 @@ function init() {
     });
   });
 
+  // Mode selector hides starting-score and best-of-sets rows when Around the World is picked
+  document.querySelectorAll('#mode-selector .set-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const isAtW = btn.dataset.mode === 'aroundWorld';
+      document.getElementById('score-group').style.display = isAtW ? 'none' : '';
+      document.getElementById('sets-group').style.display = isAtW ? 'none' : '';
+    });
+  });
+
   // Start game button
   document.getElementById('start-btn').addEventListener('click', () => {
     const name1 = document.getElementById('player1-name').value.trim() || 'Player 1';
     const name2 = document.getElementById('player2-name').value.trim() || 'Player 2';
-    const bestOfSets = parseInt(document.querySelector('.set-option.active').dataset.sets, 10);
-    const startingScore = parseInt(document.querySelector('.score-option.active').dataset.score, 10);
-    startGame(name1, name2, bestOfSets, startingScore);
+    const mode = document.querySelector('#mode-selector .set-option.active').dataset.mode;
+    const bestOfSets = parseInt(document.querySelector('#sets-selector .set-option.active').dataset.sets, 10);
+    const startingScore = parseInt(document.querySelector('#score-selector .set-option.active').dataset.score, 10);
+    startGame(name1, name2, bestOfSets, startingScore, mode);
   });
 
   // Submit score
@@ -1286,7 +1374,7 @@ function init() {
   // Rematch button
   document.getElementById('rematch-btn').addEventListener('click', () => {
     if (game) {
-      startGame(game.players[0].name, game.players[1].name, game.bestOfSets, game.startingScore);
+      startGame(game.players[0].name, game.players[1].name, game.bestOfSets, game.startingScore, game.mode);
     }
   });
 
@@ -1308,6 +1396,11 @@ function init() {
   // Checkout darts buttons
   document.querySelectorAll('.checkout-darts-btn').forEach(btn => {
     btn.addEventListener('click', () => processCheckout(parseInt(btn.dataset.darts)));
+  });
+
+  // Around-the-World hit buttons
+  document.querySelectorAll('.hit-btn').forEach(btn => {
+    btn.addEventListener('click', () => submitHits(parseInt(btn.dataset.hits, 10)));
   });
 
   // Bull-up buttons

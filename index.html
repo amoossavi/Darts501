@@ -39,13 +39,20 @@
         <input type="text" id="player2-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
       </div>
       <div class="input-group">
+        <label id="mode-label">Game Mode</label>
+        <div class="sets-selector" id="mode-selector" role="radiogroup" aria-labelledby="mode-label">
+          <button class="set-option active" data-mode="standard" role="radio" aria-checked="true">Standard</button>
+          <button class="set-option" data-mode="aroundWorld" role="radio" aria-checked="false">Around the World</button>
+        </div>
+      </div>
+      <div class="input-group" id="score-group">
         <label id="score-label">Starting Score</label>
         <div class="sets-selector" id="score-selector" role="radiogroup" aria-labelledby="score-label">
           <button class="set-option score-option" data-score="301" role="radio" aria-checked="false">301</button>
           <button class="set-option score-option active" data-score="501" role="radio" aria-checked="true">501</button>
         </div>
       </div>
-      <div class="input-group">
+      <div class="input-group" id="sets-group">
         <label id="sets-label">Best of Sets</label>
         <div class="sets-selector" id="sets-selector" role="radiogroup" aria-labelledby="sets-label">
           <button class="set-option" data-sets="1" role="radio" aria-checked="false">1</button>
@@ -267,9 +274,15 @@
 
     <!-- Score Input -->
     <div class="input-section">
-      <div class="score-input-row">
+      <div class="score-input-row" id="score-input-row">
         <input type="number" id="score-input" placeholder="Score" min="0" max="180" inputmode="numeric" autocomplete="off" aria-label="Enter score (0-180)">
         <button id="submit-btn" class="btn btn-submit" aria-label="Submit score">OK</button>
+      </div>
+      <div class="hits-input-row" id="hits-input-row" style="display:none" role="group" aria-label="Number of hits this visit">
+        <button class="hit-btn" data-hits="0">0</button>
+        <button class="hit-btn" data-hits="1">1</button>
+        <button class="hit-btn" data-hits="2">2</button>
+        <button class="hit-btn" data-hits="3">3</button>
       </div>
       <div class="action-row">
         <button id="undo-btn" class="btn btn-undo" aria-label="Undo last throw">Undo</button>
