@@ -397,106 +397,6 @@ button:focus-visible {
 }
 
 /* ============================================================
-   Voice Settings
-   ============================================================ */
-
-.settings-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-  user-select: none;
-}
-
-.settings-header h2 {
-  margin-bottom: 0;
-}
-
-.settings-arrow {
-  color: var(--text-dim);
-  font-size: 0.8rem;
-  transition: transform 0.2s;
-}
-
-.settings-arrow.open {
-  transform: rotate(90deg);
-}
-
-.settings-body {
-  overflow: hidden;
-  max-height: 300px;
-  transition: max-height 0.3s ease, opacity 0.3s ease;
-  opacity: 1;
-}
-
-.settings-body.collapsed {
-  max-height: 0;
-  opacity: 0;
-}
-
-.settings-hint {
-  font-size: 0.85rem;
-  color: var(--text-dim);
-  margin: 14px 0;
-  line-height: 1.5;
-}
-
-.settings-hint a {
-  color: var(--accent);
-  text-decoration: none;
-}
-
-.settings-hint a:hover {
-  text-decoration: underline;
-}
-
-.settings-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.voice-dropdown {
-  width: 100%;
-  padding: 12px 14px;
-  border: 2px solid var(--border);
-  border-radius: 10px;
-  background: var(--input-bg);
-  color: var(--text);
-  font-size: 1rem;
-  appearance: none;
-  cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238899aa' stroke-width='2' fill='none'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 14px center;
-}
-
-.voice-dropdown:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
-}
-
-.voice-dropdown option {
-  background: var(--bg-card);
-  color: var(--text);
-}
-
-.voice-status {
-  font-size: 0.8rem;
-  color: var(--text-dim);
-}
-
-.voice-status.status-ok {
-  color: var(--green);
-}
-
-.voice-status.status-err {
-  color: var(--accent);
-}
-
-/* ============================================================
    Match History
    ============================================================ */
 
@@ -1265,6 +1165,23 @@ button:focus-visible {
   /* Players card spans left column across all rows */
   #setup-screen .setup-card:first-of-type {
     grid-row: span 3;
+  }
+}
+
+@media (min-width: 900px) {
+  #setup-screen.active {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  /* Players left, online + theme middle, match history right */
+  #setup-screen .setup-card:first-of-type {
+    grid-row: span 2;
+  }
+
+  #setup-screen .history-section {
+    grid-column: 3;
+    grid-row: 3 / span 2;
+    margin-top: 0;
   }
 }
 

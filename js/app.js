@@ -1407,47 +1407,8 @@ function init() {
   document.getElementById('bullup-p1').addEventListener('click', () => completeBullUp(0));
   document.getElementById('bullup-p2').addEventListener('click', () => completeBullUp(1));
 
-  // Voice settings
-  preloadVoiceClips().then(() => {
-    const status = document.getElementById('voice-status');
-    if (voiceReady) {
-      status.textContent = `${audioBuffers.size} clips loaded`;
-      status.classList.add('status-ok');
-    } else {
-      status.textContent = 'No voice clips found';
-      status.classList.add('status-err');
-    }
-  });
-
-  const settingsToggle = document.getElementById('settings-toggle');
-  function toggleSettings() {
-    const body = document.getElementById('settings-body');
-    const arrow = document.getElementById('settings-arrow');
-    body.classList.toggle('collapsed');
-    arrow.classList.toggle('open');
-    const expanded = !body.classList.contains('collapsed');
-    settingsToggle.setAttribute('aria-expanded', String(expanded));
-  }
-  settingsToggle.addEventListener('click', toggleSettings);
-  settingsToggle.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      toggleSettings();
-    }
-  });
-
-  document.getElementById('test-voice-btn').addEventListener('click', () => {
-    const status = document.getElementById('voice-status');
-    if (voiceReady) {
-      speak(['one-hundred-and-eighty']);
-      status.textContent = 'Playing...';
-      status.classList.remove('status-err');
-      status.classList.add('status-ok');
-    } else {
-      status.textContent = 'No voice clips available';
-      status.classList.add('status-err');
-    }
-  });
+  // Preload voice clips for in-game callouts
+  preloadVoiceClips();
 
   // Render match history on setup screen
   renderHistory();
