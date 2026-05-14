@@ -436,6 +436,8 @@ const firebaseConfig = {
 };
 
 let db = null;
+let auth = null;
+let currentUser = null;
 let roomCode = null;
 let isHost = false;
 let unsubscribeGame = null;
@@ -446,16 +448,71 @@ let firebaseAvailable = false;
 function initFirebase() {
   try {
     if (typeof firebase === 'undefined' || !ENV.FIREBASE_API_KEY) {
-      console.warn('Firebase not available — online play disabled');
+      console.warn('Firebase not available — sign-in disabled');
+      showFatalAuthError('Sign-in is unavailable. Please try again later.');
       disableOnlinePlayUI();
       return;
     }
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
+    auth = firebase.auth();
     firebaseAvailable = true;
   } catch (err) {
     console.error('Firebase init failed:', err);
+    showFatalAuthError('Sign-in is unavailable. Please try again later.');
     disableOnlinePlayUI();
+  }
+}
+
+function showFatalAuthError(msg) {
+  const el = document.getElementById('login-error');
+  if (el) el.textContent = msg;
+  const btn = document.getElementById('google-signin-btn');
+  if (btn) btn.disabled = true;
+}
+
+async function signInWithGoogle() {
+  if (!firebaseAvailable) return;
+  const errEl = document.getElementById('login-error');
+  if (errEl) errEl.textContent = '';
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    await auth.signInWithPopup(provider);
+  } catch (err) {
+    console.error('Sign-in failed:', err);
+    if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+      return;
+    }
+    if (errEl) errEl.textContent = 'Sign-in failed. Please try again.';
+  }
+}
+
+async function signOut() {
+  if (!firebaseAvailable) return;
+  try {
+    if (isOnline) await leaveRoom();
+  } catch {}
+  try { await auth.signOut(); } catch (err) { console.error('Sign-out failed:', err); }
+}
+
+function onAuthChanged(user) {
+  currentUser = user;
+  if (user) {
+    const chip = document.getElementById('user-chip');
+    const avatar = document.getElementById('user-chip-avatar');
+    const name = document.getElementById('user-chip-name');
+    if (avatar && user.photoURL) { avatar.src = user.photoURL; avatar.style.display = ''; }
+    else if (avatar) { avatar.style.display = 'none'; }
+    if (name) name.textContent = user.displayName || user.email || 'Signed in';
+    if (chip) chip.style.display = '';
+
+    const p1 = document.getElementById('player1-name');
+    if (p1 && !p1.value.trim() && user.displayName) p1.value = user.displayName;
+
+    showScreen('setup-screen');
+    renderHistory();
+  } else {
+    showScreen('login-screen');
   }
 }
 
@@ -1274,6 +1331,15 @@ function init() {
   initTheme();
   initFirebase();
 
+  // Auth gates the app — login screen until signed in, setup screen after.
+  if (firebaseAvailable) {
+    auth.onAuthStateChanged(onAuthChanged);
+  } else {
+    showScreen('login-screen');
+  }
+  document.getElementById('google-signin-btn').addEventListener('click', signInWithGoogle);
+  document.getElementById('sign-out-btn').addEventListener('click', signOut);
+
   // Load saved player names
   try {
     const saved = JSON.parse(localStorage.getItem('darts501_playerNames'));
@@ -1410,9 +1476,8 @@ function init() {
   // Preload voice clips for in-game callouts
   preloadVoiceClips();
 
-  // Render match history on setup screen
+  // Initial screen is driven by onAuthStateChanged; default to login until that fires.
   renderHistory();
-  showScreen('setup-screen');
 }
 
 // Clean up Firestore room if host closes/reloads the page
