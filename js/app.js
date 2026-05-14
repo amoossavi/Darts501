@@ -509,11 +509,389 @@ function onAuthChanged(user) {
     const p1 = document.getElementById('player1-name');
     if (p1 && !p1.value.trim() && user.displayName) p1.value = user.displayName;
 
+    writeUserProfile(user);
+    subscribeFriendships();
+    subscribeChallenges();
     showScreen('setup-screen');
     renderHistory();
   } else {
+    unsubscribeFriendships();
+    unsubscribeChallenges();
     showScreen('login-screen');
   }
+}
+
+function writeUserProfile(user) {
+  if (!db || !user) return;
+  db.collection('users').doc(user.uid).set({
+    uid: user.uid,
+    displayName: user.displayName || '',
+    email: (user.email || '').toLowerCase(),
+    photoURL: user.photoURL || '',
+    lastSeenAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true }).catch(err => console.warn('Profile write failed:', err));
+}
+
+// ============================================================
+// Friends
+// ============================================================
+
+let friendshipsUnsub = null;
+let friendshipsCache = [];
+
+function pairIdFor(a, b) {
+  return [a, b].sort().join('_');
+}
+
+function profileFromUser(u) {
+  return {
+    displayName: u.displayName || '',
+    email: (u.email || '').toLowerCase(),
+    photoURL: u.photoURL || ''
+  };
+}
+
+function setFriendStatus(msg, isError) {
+  const el = document.getElementById('friend-status');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.classList.toggle('error', !!isError);
+}
+
+async function sendFriendRequest(rawEmail) {
+  if (!firebaseAvailable || !currentUser) return;
+  const email = (rawEmail || '').trim().toLowerCase();
+  setFriendStatus('');
+  if (!email) { setFriendStatus('Enter an email', true); return; }
+  if (email === (currentUser.email || '').toLowerCase()) {
+    setFriendStatus("That's you", true); return;
+  }
+
+  try {
+    const snap = await db.collection('users').where('email', '==', email).limit(1).get();
+    if (snap.empty) { setFriendStatus('No account found for that email', true); return; }
+    const other = snap.docs[0].data();
+    if (other.uid === currentUser.uid) { setFriendStatus("That's you", true); return; }
+
+    const pairId = pairIdFor(currentUser.uid, other.uid);
+    const ref = db.collection('friendships').doc(pairId);
+    const existing = await ref.get();
+    if (existing.exists) {
+      const s = existing.data().status;
+      setFriendStatus(s === 'accepted' ? 'Already friends' : 'Request already pending', true);
+      return;
+    }
+
+    await ref.set({
+      uids: [currentUser.uid, other.uid].sort(),
+      status: 'pending',
+      requester: currentUser.uid,
+      profiles: {
+        [currentUser.uid]: profileFromUser(currentUser),
+        [other.uid]: { displayName: other.displayName, email: other.email, photoURL: other.photoURL }
+      },
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById('friend-email-input').value = '';
+    setFriendStatus('Request sent');
+  } catch (err) {
+    console.error('Friend request failed:', err);
+    setFriendStatus('Could not send request', true);
+  }
+}
+
+async function acceptFriendRequest(pairId) {
+  if (!firebaseAvailable) return;
+  try {
+    await db.collection('friendships').doc(pairId).update({
+      status: 'accepted',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (err) {
+    console.error('Accept failed:', err);
+    setFriendStatus('Could not accept request', true);
+  }
+}
+
+async function removeFriendship(pairId) {
+  if (!firebaseAvailable) return;
+  try {
+    await db.collection('friendships').doc(pairId).delete();
+  } catch (err) {
+    console.error('Remove failed:', err);
+    setFriendStatus('Could not update friend', true);
+  }
+}
+
+function subscribeFriendships() {
+  if (!firebaseAvailable || !currentUser) return;
+  unsubscribeFriendships();
+  friendshipsUnsub = db.collection('friendships')
+    .where('uids', 'array-contains', currentUser.uid)
+    .onSnapshot(snap => {
+      friendshipsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderFriendships();
+    }, err => {
+      console.error('Friendships listener error:', err);
+    });
+}
+
+function unsubscribeFriendships() {
+  if (friendshipsUnsub) {
+    friendshipsUnsub();
+    friendshipsUnsub = null;
+  }
+  friendshipsCache = [];
+  renderFriendships();
+}
+
+function renderFriendships() {
+  const incoming = document.getElementById('friends-incoming');
+  const outgoing = document.getElementById('friends-outgoing');
+  const accepted = document.getElementById('friends-accepted');
+  const incomingSection = document.getElementById('friends-incoming-section');
+  const outgoingSection = document.getElementById('friends-outgoing-section');
+  if (!incoming || !outgoing || !accepted) return;
+
+  const myUid = currentUser ? currentUser.uid : null;
+  const inc = [], out = [], acc = [];
+  for (const f of friendshipsCache) {
+    if (f.status === 'accepted') acc.push(f);
+    else if (f.status === 'pending') (f.requester === myUid ? out : inc).push(f);
+  }
+
+  incomingSection.style.display = inc.length ? '' : 'none';
+  outgoingSection.style.display = out.length ? '' : 'none';
+
+  incoming.innerHTML = inc.map(f => friendRowHtml(f, myUid, 'incoming')).join('');
+  outgoing.innerHTML = out.map(f => friendRowHtml(f, myUid, 'outgoing')).join('');
+  accepted.innerHTML = acc.length
+    ? acc.map(f => friendRowHtml(f, myUid, 'accepted')).join('')
+    : '<div class="friends-empty">No friends yet — add one above.</div>';
+}
+
+// ============================================================
+// Challenges
+// ============================================================
+
+let challengesUnsub = null;
+let challengesCache = [];
+let activeChallengeId = null;
+let activeChallengeUnsub = null;
+
+function subscribeChallenges() {
+  if (!firebaseAvailable || !currentUser) return;
+  unsubscribeChallenges();
+  challengesUnsub = db.collection('challenges')
+    .where('participants', 'array-contains', currentUser.uid)
+    .onSnapshot(snap => {
+      challengesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderChallenges();
+    }, err => console.error('Challenges listener error:', err));
+}
+
+function unsubscribeChallenges() {
+  if (challengesUnsub) { challengesUnsub(); challengesUnsub = null; }
+  detachActiveChallenge();
+  challengesCache = [];
+  renderChallenges();
+}
+
+function detachActiveChallenge() {
+  if (activeChallengeUnsub) { activeChallengeUnsub(); activeChallengeUnsub = null; }
+  activeChallengeId = null;
+}
+
+function readSetupSettings() {
+  return {
+    gameMode: document.querySelector('#mode-selector .set-option.active').dataset.mode,
+    bestOfSets: parseInt(document.querySelector('#sets-selector .set-option.active').dataset.sets, 10),
+    startingScore: parseInt(document.querySelector('#score-selector .set-option.active').dataset.score, 10)
+  };
+}
+
+function challengeMetaLine(c) {
+  return c.gameMode === 'aroundWorld'
+    ? 'Around the World'
+    : `${c.startingScore} • Best of ${c.bestOfSets}`;
+}
+
+async function challengeFriend(pairId) {
+  if (!firebaseAvailable || !currentUser) return;
+  if (isOnline || activeChallengeId) {
+    showMessage('Already in a game or challenge');
+    return;
+  }
+  const f = friendshipsCache.find(x => x.id === pairId);
+  if (!f || f.status !== 'accepted') return;
+  const otherUid = f.uids.find(u => u !== currentUser.uid);
+  const otherProfile = (f.profiles && f.profiles[otherUid]) || {};
+
+  const settings = readSetupSettings();
+  await hostGame();
+  if (!isOnline || !roomCode) return;
+
+  // Hide the regular room-info card — challenger doesn't share a code.
+  document.getElementById('room-info').style.display = 'none';
+
+  try {
+    const ref = db.collection('challenges').doc();
+    await ref.set({
+      from: currentUser.uid,
+      to: otherUid,
+      participants: [currentUser.uid, otherUid],
+      fromProfile: profileFromUser(currentUser),
+      toProfile: { displayName: otherProfile.displayName || '', email: otherProfile.email || '', photoURL: otherProfile.photoURL || '' },
+      status: 'pending',
+      gameMode: settings.gameMode,
+      bestOfSets: settings.bestOfSets,
+      startingScore: settings.startingScore,
+      roomCode: roomCode,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    activeChallengeId = ref.id;
+    watchActiveChallenge(ref);
+    showMessage('Challenge sent');
+  } catch (err) {
+    console.error('Challenge send failed:', err);
+    showMessage('Could not send challenge');
+    leaveRoom();
+  }
+}
+
+function watchActiveChallenge(ref) {
+  activeChallengeUnsub = ref.onSnapshot(doc => {
+    if (!doc.exists) {
+      detachActiveChallenge();
+      return;
+    }
+    const c = doc.data();
+    if (c.status === 'accepted') {
+      const myName = currentUser.displayName || 'Player 1';
+      const theirName = (c.toProfile && c.toProfile.displayName) || 'Player 2';
+      detachActiveChallenge();
+      ref.delete().catch(() => {});
+      startGame(myName, theirName, c.bestOfSets, c.startingScore, c.gameMode);
+      // Skip the bull-up overlay — challenger throws first.
+      document.getElementById('bullup-overlay').style.display = 'none';
+      completeBullUp(0);
+    } else if (c.status === 'declined' || c.status === 'cancelled') {
+      const who = (c.toProfile && c.toProfile.displayName) || 'Friend';
+      showMessage(`${who} declined`);
+      detachActiveChallenge();
+      ref.delete().catch(() => {});
+      leaveRoom();
+    }
+  }, err => console.error('Active challenge listener error:', err));
+}
+
+async function acceptChallenge(challengeId) {
+  if (!firebaseAvailable || !currentUser) return;
+  if (isOnline) { showMessage('Leave your current game first'); return; }
+  try {
+    const ref = db.collection('challenges').doc(challengeId);
+    const snap = await ref.get();
+    if (!snap.exists) { showMessage('Challenge no longer available'); return; }
+    const c = snap.data();
+    if (c.to !== currentUser.uid || c.status !== 'pending') return;
+    await ref.update({ status: 'accepted' });
+    await joinRoom(c.roomCode);
+  } catch (err) {
+    console.error('Accept challenge failed:', err);
+    showMessage('Could not accept challenge');
+  }
+}
+
+async function declineChallenge(challengeId) {
+  try {
+    await db.collection('challenges').doc(challengeId).update({ status: 'declined' });
+  } catch (err) {
+    console.error('Decline failed:', err);
+  }
+}
+
+async function cancelChallenge(challengeId) {
+  try {
+    await db.collection('challenges').doc(challengeId).update({ status: 'cancelled' });
+  } catch (err) {
+    console.error('Cancel failed:', err);
+  }
+  detachActiveChallenge();
+  if (isHost) leaveRoom();
+}
+
+function renderChallenges() {
+  const incoming = document.getElementById('challenges-incoming');
+  const outgoing = document.getElementById('challenges-outgoing');
+  const incomingSection = document.getElementById('challenges-incoming-section');
+  const outgoingSection = document.getElementById('challenges-outgoing-section');
+  if (!incoming || !outgoing) return;
+
+  const myUid = currentUser ? currentUser.uid : null;
+  const inc = [], out = [];
+  for (const c of challengesCache) {
+    if (c.status !== 'pending') continue;
+    if (c.to === myUid) inc.push(c);
+    else if (c.from === myUid) out.push(c);
+  }
+
+  incomingSection.style.display = inc.length ? '' : 'none';
+  outgoingSection.style.display = out.length ? '' : 'none';
+  incoming.innerHTML = inc.map(c => challengeRowHtml(c, 'incoming')).join('');
+  outgoing.innerHTML = out.map(c => challengeRowHtml(c, 'outgoing')).join('');
+}
+
+function challengeRowHtml(c, kind) {
+  const p = kind === 'incoming' ? (c.fromProfile || {}) : (c.toProfile || {});
+  const name = escapeHtml(p.displayName || p.email || 'Unknown');
+  const photo = p.photoURL
+    ? `<img class="friend-avatar" src="${escapeHtml(p.photoURL)}" alt="" referrerpolicy="no-referrer">`
+    : '<div class="friend-avatar friend-avatar-placeholder"></div>';
+  const meta = escapeHtml(challengeMetaLine(c));
+  const id = escapeHtml(c.id);
+  const actions = kind === 'incoming'
+    ? `<button class="btn btn-primary btn-small" data-challenge-accept="${id}">Play</button>
+       <button class="btn btn-secondary btn-small" data-challenge-decline="${id}">Decline</button>`
+    : `<button class="btn btn-secondary btn-small" data-challenge-cancel="${id}">Cancel</button>`;
+  return `
+    <div class="friend-row challenge-row">
+      ${photo}
+      <div class="friend-info">
+        <div class="friend-name">${name}</div>
+        <div class="friend-email">${meta}</div>
+      </div>
+      <div class="friend-actions">${actions}</div>
+    </div>`;
+}
+
+function friendRowHtml(f, myUid, kind) {
+  const otherUid = f.uids.find(u => u !== myUid);
+  const p = (f.profiles && f.profiles[otherUid]) || {};
+  const name = escapeHtml(p.displayName || p.email || 'Unknown');
+  const email = escapeHtml(p.email || '');
+  const photo = p.photoURL ? `<img class="friend-avatar" src="${escapeHtml(p.photoURL)}" alt="" referrerpolicy="no-referrer">` : '<div class="friend-avatar friend-avatar-placeholder"></div>';
+  let actions = '';
+  if (kind === 'incoming') {
+    actions = `
+      <button class="btn btn-primary btn-small" data-friend-accept="${escapeHtml(f.id)}">Accept</button>
+      <button class="btn btn-secondary btn-small" data-friend-remove="${escapeHtml(f.id)}">Decline</button>`;
+  } else if (kind === 'outgoing') {
+    actions = `<button class="btn btn-secondary btn-small" data-friend-remove="${escapeHtml(f.id)}">Cancel</button>`;
+  } else {
+    actions = `
+      <button class="btn btn-primary btn-small" data-friend-challenge="${escapeHtml(f.id)}">Challenge</button>
+      <button class="btn btn-secondary btn-small" data-friend-remove="${escapeHtml(f.id)}">Remove</button>`;
+  }
+  return `
+    <div class="friend-row">
+      ${photo}
+      <div class="friend-info">
+        <div class="friend-name">${name}</div>
+        <div class="friend-email">${email}</div>
+      </div>
+      <div class="friend-actions">${actions}</div>
+    </div>`;
 }
 
 function disableOnlinePlayUI() {
@@ -1340,6 +1718,28 @@ function init() {
   document.getElementById('google-signin-btn').addEventListener('click', signInWithGoogle);
   document.getElementById('sign-out-btn').addEventListener('click', signOut);
 
+  // Friends card
+  document.getElementById('friend-add-btn').addEventListener('click', () => {
+    sendFriendRequest(document.getElementById('friend-email-input').value);
+  });
+  document.getElementById('friend-email-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('friend-add-btn').click();
+  });
+  document.getElementById('friends-card').addEventListener('click', (e) => {
+    const accept = e.target.closest('[data-friend-accept]');
+    if (accept) { acceptFriendRequest(accept.dataset.friendAccept); return; }
+    const remove = e.target.closest('[data-friend-remove]');
+    if (remove) { removeFriendship(remove.dataset.friendRemove); return; }
+    const challenge = e.target.closest('[data-friend-challenge]');
+    if (challenge) { challengeFriend(challenge.dataset.friendChallenge); return; }
+    const cAccept = e.target.closest('[data-challenge-accept]');
+    if (cAccept) { acceptChallenge(cAccept.dataset.challengeAccept); return; }
+    const cDecline = e.target.closest('[data-challenge-decline]');
+    if (cDecline) { declineChallenge(cDecline.dataset.challengeDecline); return; }
+    const cCancel = e.target.closest('[data-challenge-cancel]');
+    if (cCancel) { cancelChallenge(cCancel.dataset.challengeCancel); }
+  });
+
   // Load saved player names
   try {
     const saved = JSON.parse(localStorage.getItem('darts501_playerNames'));
@@ -1487,6 +1887,9 @@ window.addEventListener('beforeunload', () => {
     const docRef = db.collection('games').doc(roomCode);
     // navigator.sendBeacon is not available for Firestore, so we do a fire-and-forget delete
     docRef.delete().catch(() => {});
+  }
+  if (activeChallengeId && db) {
+    db.collection('challenges').doc(activeChallengeId).delete().catch(() => {});
   }
 });
 
