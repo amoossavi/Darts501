@@ -487,6 +487,22 @@ async function signInWithGoogle() {
   }
 }
 
+async function signInAsGuest() {
+  if (!firebaseAvailable) return;
+  const errEl = document.getElementById('login-error');
+  if (errEl) errEl.textContent = '';
+  try {
+    await auth.signInAnonymously();
+  } catch (err) {
+    console.error('Guest sign-in failed:', err);
+    if (errEl) {
+      errEl.textContent = err.code === 'auth/operation-not-allowed'
+        ? 'Guest sign-in is not enabled.'
+        : 'Could not continue as guest.';
+    }
+  }
+}
+
 async function signOut() {
   if (!firebaseAvailable) return;
   try {
@@ -501,17 +517,32 @@ function onAuthChanged(user) {
     const chip = document.getElementById('user-chip');
     const avatar = document.getElementById('user-chip-avatar');
     const name = document.getElementById('user-chip-name');
-    if (avatar && user.photoURL) { avatar.src = user.photoURL; avatar.style.display = ''; }
-    else if (avatar) { avatar.style.display = 'none'; }
-    if (name) name.textContent = user.displayName || user.email || 'Signed in';
+    const signBtn = document.getElementById('sign-out-btn');
+    const friendsCard = document.getElementById('friends-card');
+
+    if (user.isAnonymous) {
+      if (avatar) avatar.style.display = 'none';
+      if (name) name.textContent = 'Guest';
+      if (signBtn) signBtn.textContent = 'Sign in';
+      if (friendsCard) friendsCard.style.display = 'none';
+      unsubscribeFriendships();
+      unsubscribeChallenges();
+    } else {
+      if (avatar && user.photoURL) { avatar.src = user.photoURL; avatar.style.display = ''; }
+      else if (avatar) { avatar.style.display = 'none'; }
+      if (name) name.textContent = user.displayName || user.email || 'Signed in';
+      if (signBtn) signBtn.textContent = 'Sign out';
+      if (friendsCard) friendsCard.style.display = '';
+
+      const p1 = document.getElementById('player1-name');
+      if (p1 && !p1.value.trim() && user.displayName) p1.value = user.displayName;
+
+      writeUserProfile(user);
+      subscribeFriendships();
+      subscribeChallenges();
+    }
+
     if (chip) chip.style.display = '';
-
-    const p1 = document.getElementById('player1-name');
-    if (p1 && !p1.value.trim() && user.displayName) p1.value = user.displayName;
-
-    writeUserProfile(user);
-    subscribeFriendships();
-    subscribeChallenges();
     showScreen('setup-screen');
     renderHistory();
   } else {
@@ -1716,7 +1747,11 @@ function init() {
     showScreen('login-screen');
   }
   document.getElementById('google-signin-btn').addEventListener('click', signInWithGoogle);
-  document.getElementById('sign-out-btn').addEventListener('click', signOut);
+  document.getElementById('guest-signin-btn').addEventListener('click', signInAsGuest);
+  document.getElementById('sign-out-btn').addEventListener('click', () => {
+    if (currentUser && currentUser.isAnonymous) signInWithGoogle();
+    else signOut();
+  });
 
   // Friends card
   document.getElementById('friend-add-btn').addEventListener('click', () => {
