@@ -397,66 +397,6 @@ button:focus-visible {
 }
 
 /* ============================================================
-   Match History
-   ============================================================ */
-
-.history-section {
-  margin-top: 10px;
-}
-
-.history-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.history-header h2 {
-  margin-bottom: 0;
-}
-
-.no-history {
-  color: var(--text-dim);
-  text-align: center;
-  padding: 20px;
-}
-
-.history-item {
-  background: var(--bg-panel);
-  border-radius: 10px;
-  padding: 14px 18px;
-  margin-bottom: 10px;
-  border: 1px solid var(--border);
-}
-
-.history-date {
-  font-size: 0.8rem;
-  color: var(--text-dim);
-  margin-bottom: 4px;
-}
-
-.history-result {
-  font-size: 1.05rem;
-  font-weight: 600;
-}
-
-.history-vs {
-  color: var(--text-dim);
-  margin: 0 8px;
-  font-weight: 400;
-}
-
-.history-winner {
-  color: var(--green);
-}
-
-.history-stats {
-  font-size: 0.85rem;
-  color: var(--text-dim);
-  margin-top: 4px;
-}
-
-/* ============================================================
    Online Play
    ============================================================ */
 
@@ -712,19 +652,6 @@ button:focus-visible {
   color: var(--text);
 }
 
-.player-hist-stats {
-  font-size: clamp(0.7rem, 1.5vw, 0.9rem);
-  color: var(--text-dim);
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
-  opacity: 0.75;
-}
-
-.player-hist-stats strong {
-  color: var(--text);
-}
-
 .checkout-hint {
   margin-top: 10px;
   padding: clamp(10px, 2vw, 18px) clamp(14px, 3vw, 24px);
@@ -735,14 +662,6 @@ button:focus-visible {
   font-weight: 800;
   letter-spacing: 0.5px;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-}
-
-/* Around-the-World mode hides 501-specific stats and the checkout hint */
-.mode-around-world .player-legs-sets,
-.mode-around-world .player-stats,
-.mode-around-world .player-hist-stats,
-.mode-around-world .checkout-hint {
-  display: none !important;
 }
 
 /* ============================================================
@@ -795,36 +714,6 @@ button:focus-visible {
 .score-input-row .btn {
   padding: 16px 28px;
   white-space: nowrap;
-}
-
-/* Hits input row (Around the World) */
-.hits-input-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.hit-btn {
-  flex: 1;
-  padding: 18px 0;
-  border: 2px solid var(--border);
-  border-radius: 10px;
-  background: var(--input-bg);
-  color: var(--text);
-  font-size: clamp(1.4rem, 4vw, 2rem);
-  font-weight: 800;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, transform 0.1s;
-}
-
-.hit-btn:hover {
-  border-color: var(--green);
-}
-
-.hit-btn:active {
-  transform: scale(0.96);
-  background: var(--green);
-  color: white;
 }
 
 .action-row {
@@ -1173,15 +1062,8 @@ button:focus-visible {
     grid-template-columns: 1fr 1fr 1fr;
   }
 
-  /* Players left, online + theme middle, match history right */
   #setup-screen .setup-card:first-of-type {
     grid-row: span 2;
-  }
-
-  #setup-screen .history-section {
-    grid-column: 3;
-    grid-row: 3 / span 2;
-    margin-top: 0;
   }
 }
 

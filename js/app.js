@@ -2,7 +2,6 @@
 // Darts 501 Scoring App
 // ============================================================
 
-const STORAGE_KEY = 'darts501_history';
 const THEME_STORAGE_KEY = 'darts501_theme';
 const legWonAudio = new Audio('audio/leg-won.mp3');
 
@@ -544,7 +543,6 @@ function onAuthChanged(user) {
 
     if (chip) chip.style.display = '';
     showScreen('setup-screen');
-    renderHistory();
   } else {
     unsubscribeFriendships();
     unsubscribeChallenges();
@@ -736,16 +734,13 @@ function detachActiveChallenge() {
 
 function readSetupSettings() {
   return {
-    gameMode: document.querySelector('#mode-selector .set-option.active').dataset.mode,
     bestOfSets: parseInt(document.querySelector('#sets-selector .set-option.active').dataset.sets, 10),
     startingScore: parseInt(document.querySelector('#score-selector .set-option.active').dataset.score, 10)
   };
 }
 
 function challengeMetaLine(c) {
-  return c.gameMode === 'aroundWorld'
-    ? 'Around the World'
-    : `${c.startingScore} • Best of ${c.bestOfSets}`;
+  return `${c.startingScore} • Best of ${c.bestOfSets}`;
 }
 
 async function challengeFriend(pairId) {
@@ -775,7 +770,6 @@ async function challengeFriend(pairId) {
       fromProfile: profileFromUser(currentUser),
       toProfile: { displayName: otherProfile.displayName || '', email: otherProfile.email || '', photoURL: otherProfile.photoURL || '' },
       status: 'pending',
-      gameMode: settings.gameMode,
       bestOfSets: settings.bestOfSets,
       startingScore: settings.startingScore,
       roomCode: roomCode,
@@ -803,7 +797,7 @@ function watchActiveChallenge(ref) {
       const theirName = (c.toProfile && c.toProfile.displayName) || 'Player 2';
       detachActiveChallenge();
       ref.delete().catch(() => {});
-      startGame(myName, theirName, c.bestOfSets, c.startingScore, c.gameMode);
+      startGame(myName, theirName, c.bestOfSets, c.startingScore);
       // Skip the bull-up overlay — challenger throws first.
       document.getElementById('bullup-overlay').style.display = 'none';
       completeBullUp(0);
@@ -1174,7 +1168,6 @@ function leaveRoom() {
   document.getElementById('host-btn').textContent = 'Host Game';
   document.getElementById('join-code').value = '';
   showScreen('setup-screen');
-  renderHistory();
 }
 
 // Game state
@@ -1184,7 +1177,6 @@ function createPlayer(name, startingScore) {
   return {
     name: name,
     score: startingScore,
-    target: 1,
     darts: 0,
     visits: [],
     legs: 0,
@@ -1195,23 +1187,17 @@ function createPlayer(name, startingScore) {
   };
 }
 
-function startGame(name1, name2, bestOfSets, startingScore, mode) {
-  mode = mode || 'standard';
+function startGame(name1, name2, bestOfSets, startingScore) {
   const score = startingScore || 501;
   game = {
     players: [createPlayer(name1, score), createPlayer(name2, score)],
     currentPlayer: 0,
     legStartingPlayer: 0,
-    bestOfSets: bestOfSets || 3,
+    bestOfSets: bestOfSets || 1,
     startingScore: score,
-    mode: mode,
     gameOver: false,
     winner: null,
   };
-
-  for (const p of game.players) {
-    p.histStats = getHistoricalStats(p.name);
-  }
 
   localStorage.setItem('darts501_playerNames', JSON.stringify([name1, name2]));
 
@@ -1319,35 +1305,6 @@ function submitScore(points) {
   focusScoreInput();
 }
 
-function submitHits(n) {
-  if (!game || game.gameOver) return;
-  if (game.mode !== 'aroundWorld') return;
-  if (n < 0 || n > 3) return;
-
-  const player = getCurrentPlayer();
-  player.visits.push({ hits: n });
-  player.darts += 3;
-  player.target += n;
-
-  if (player.target > 20) {
-    for (const p of game.players) {
-      p.matchDarts += p.darts;
-      p.matchVisits = p.matchVisits.concat(p.visits);
-    }
-    game.gameOver = true;
-    game.winner = game.currentPlayer;
-    saveGame();
-    fireEvent({ id: Date.now(), type: 'matchWon', playerName: player.name });
-    syncGameToFirestore();
-    showGameOver();
-    return;
-  }
-
-  switchPlayer();
-  render();
-  syncGameToFirestore();
-}
-
 function showCheckoutDartsOverlay(player, points) {
   const overlay = document.getElementById('checkout-darts-overlay');
   document.getElementById('checkout-darts-desc').textContent = `${player.name} checked out on ${points}. How many darts?`;
@@ -1367,9 +1324,6 @@ function processCheckout(dartsUsed) {
   player.darts += dartsUsed - 3;
 
   player.checkouts.push(points);
-  if (player.histStats && points > (player.histStats.bestCheckout || 0)) {
-    player.histStats.bestCheckout = points;
-  }
   player.legs++;
   const setsToWin = Math.ceil(game.bestOfSets / 2);
 
@@ -1387,7 +1341,6 @@ function processCheckout(dartsUsed) {
       }
       game.gameOver = true;
       game.winner = parseInt(overlay.dataset.playerIndex);
-      saveGame();
       fireEvent({ id: Date.now(), type: 'matchWon', playerName: player.name });
       syncGameToFirestore();
       showGameOver();
@@ -1425,9 +1378,7 @@ function undoLastThrow() {
   const lastVisit = player.visits.pop();
   player.darts -= 3;
 
-  if (game.mode === 'aroundWorld') {
-    player.target -= lastVisit.hits;
-  } else if (!lastVisit.busted) {
+  if (!lastVisit.busted) {
     player.score += lastVisit.score;
   }
 
@@ -1501,11 +1452,6 @@ function showScreen(screenId) {
 function render() {
   if (!game) return;
 
-  const isAtW = game.mode === 'aroundWorld';
-  document.getElementById('game-screen').classList.toggle('mode-around-world', isAtW);
-  document.getElementById('score-input-row').style.display = isAtW ? 'none' : '';
-  document.getElementById('hits-input-row').style.display = isAtW ? '' : 'none';
-
   for (let i = 0; i < game.players.length; i++) {
     const p = game.players[i];
     const idx = i + 1;
@@ -1514,24 +1460,12 @@ function render() {
     panel.classList.toggle('active-player', game.currentPlayer === i);
 
     document.getElementById(`p${idx}-name`).textContent = p.name;
-
-    if (isAtW) {
-      document.getElementById(`p${idx}-score`).textContent = Math.min(p.target, 20);
-      document.getElementById(`p${idx}-darts`).textContent = p.matchDarts + p.darts;
-      continue;
-    }
-
     document.getElementById(`p${idx}-sets`).textContent = p.sets;
     document.getElementById(`p${idx}-legs`).textContent = p.legs;
     document.getElementById(`p${idx}-score`).textContent = p.score;
     document.getElementById(`p${idx}-darts`).textContent = p.matchDarts + p.darts;
     document.getElementById(`p${idx}-average`).textContent = calculateAverage(p).toFixed(1);
     document.getElementById(`p${idx}-highest`).textContent = getHighestVisit(p);
-
-    const hs = p.histStats;
-    document.getElementById(`p${idx}-hist-avg`).textContent = hs && hs.allTimeAvg !== null ? hs.allTimeAvg : '-';
-    document.getElementById(`p${idx}-hist-last5`).textContent = hs && hs.last5Avg !== null ? hs.last5Avg : '-';
-    document.getElementById(`p${idx}-hist-checkout`).textContent = hs && hs.bestCheckout > 0 ? hs.bestCheckout : '-';
 
     const checkout = getCheckoutSuggestion(p.score);
     const checkoutEl = document.getElementById(`p${idx}-checkout`);
@@ -1544,11 +1478,7 @@ function render() {
     }
   }
 
-  // Turn indicator
-  const turnText = document.getElementById('turn-indicator');
-  turnText.textContent = isAtW
-    ? `${getCurrentPlayer().name}'s turn — aim for ${getCurrentPlayer().target}`
-    : `${getCurrentPlayer().name}'s turn`;
+  document.getElementById('turn-indicator').textContent = `${getCurrentPlayer().name}'s turn`;
 
   renderVisitHistory();
 }
@@ -1556,7 +1486,6 @@ function render() {
 function renderVisitHistory() {
   const tbody = document.getElementById('history-body');
   tbody.innerHTML = '';
-  const isAtW = game.mode === 'aroundWorld';
 
   const maxVisits = Math.max(game.players[0].visits.length, game.players[1].visits.length);
 
@@ -1568,12 +1497,8 @@ function renderVisitHistory() {
 
     const td1 = document.createElement('td');
     if (v1) {
-      if (isAtW) {
-        td1.textContent = v1.hits;
-      } else {
-        td1.textContent = v1.busted ? `${v1.score} (BUST)` : v1.score;
-        if (v1.busted) td1.classList.add('bust');
-      }
+      td1.textContent = v1.busted ? `${v1.score} (BUST)` : v1.score;
+      if (v1.busted) td1.classList.add('bust');
     }
 
     const tdRound = document.createElement('td');
@@ -1582,12 +1507,8 @@ function renderVisitHistory() {
 
     const td2 = document.createElement('td');
     if (v2) {
-      if (isAtW) {
-        td2.textContent = v2.hits;
-      } else {
-        td2.textContent = v2.busted ? `${v2.score} (BUST)` : v2.score;
-        if (v2.busted) td2.classList.add('bust');
-      }
+      td2.textContent = v2.busted ? `${v2.score} (BUST)` : v2.score;
+      if (v2.busted) td2.classList.add('bust');
     }
 
     row.appendChild(td1);
@@ -1603,133 +1524,24 @@ function renderVisitHistory() {
 
 function showGameOver() {
   document.getElementById('winner-name').textContent = game.players[game.winner].name;
-  const isAtW = game.mode === 'aroundWorld';
 
   for (let i = 0; i < game.players.length; i++) {
     const p = game.players[i];
     const idx = i + 1;
     document.getElementById(`go-p${idx}-name`).textContent = p.name;
     document.getElementById(`go-p${idx}-darts`).textContent = p.matchDarts;
-    if (isAtW) {
-      document.getElementById(`go-p${idx}-sets`).textContent = `${Math.min(p.target - 1, 20)}/20`;
-      document.getElementById(`go-p${idx}-average`).textContent = '-';
-      document.getElementById(`go-p${idx}-highest`).textContent = '-';
-    } else {
-      document.getElementById(`go-p${idx}-sets`).textContent = p.sets;
-      document.getElementById(`go-p${idx}-average`).textContent = calculateAverage(p).toFixed(1);
-      document.getElementById(`go-p${idx}-highest`).textContent = getHighestVisit(p);
-    }
+    document.getElementById(`go-p${idx}-sets`).textContent = p.sets;
+    document.getElementById(`go-p${idx}-average`).textContent = calculateAverage(p).toFixed(1);
+    document.getElementById(`go-p${idx}-highest`).textContent = getHighestVisit(p);
   }
 
   showScreen('gameover-screen');
-}
-
-// ============================================================
-// LocalStorage
-// ============================================================
-
-function saveGame() {
-  const history = loadHistory();
-  const isAtW = game.mode === 'aroundWorld';
-  const entry = {
-    date: new Date().toISOString(),
-    winner: game.players[game.winner].name,
-    mode: game.mode,
-    bestOfSets: game.bestOfSets,
-    players: game.players.map(p => ({
-      name: p.name,
-      sets: isAtW ? null : p.sets,
-      average: isAtW ? null : parseFloat(calculateAverage(p).toFixed(1)),
-      dartsThrown: p.matchDarts,
-      bestCheckout: isAtW ? 0 : (p.checkouts.length > 0 ? Math.max(...p.checkouts) : 0),
-      target: isAtW ? p.target : null,
-    })),
-  };
-  history.push(entry);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-}
-
-function loadHistory() {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
-}
-
-function getHistoricalStats(playerName) {
-  const history = loadHistory();
-  // Only Standard 501/301 games contribute to historical averages — Around the World
-  // games don't have a meaningful per-dart average.
-  const games = history
-    .filter(e => e.mode !== 'aroundWorld')
-    .map(e => e.players.find(p => p.name === playerName))
-    .filter(p => p && typeof p.average === 'number');
-  if (games.length === 0) return { allTimeAvg: null, last5Avg: null, bestCheckout: 0 };
-  const allTimeAvg = (games.reduce((s, p) => s + p.average, 0) / games.length).toFixed(1);
-  const last5 = games.slice(-5);
-  const last5Avg = (last5.reduce((s, p) => s + p.average, 0) / last5.length).toFixed(1);
-  const bestCheckout = Math.max(0, ...games.map(p => p.bestCheckout || 0));
-  return { allTimeAvg, last5Avg, bestCheckout };
 }
 
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
-}
-
-function renderHistory() {
-  const history = loadHistory();
-  const container = document.getElementById('match-history');
-
-  if (history.length === 0) {
-    container.innerHTML = '<p class="no-history">No previous games</p>';
-    return;
-  }
-
-  let html = '';
-  // Show most recent first
-  for (let i = history.length - 1; i >= 0; i--) {
-    const g = history[i];
-    const date = new Date(g.date).toLocaleDateString();
-
-    // Support both old 2-player format and new players array format
-    const players = g.players || [g.player1, g.player2];
-    const isAtW = g.mode === 'aroundWorld';
-
-    const resultParts = players.map(p => {
-      let detail;
-      if (isAtW) {
-        detail = g.winner === p.name ? 'Won' : `${Math.min((p.target || 1) - 1, 20)}/20`;
-      } else {
-        detail = p.sets !== undefined && p.sets !== null ? p.sets + ' sets' : p.finalScore;
-      }
-      const safeName = escapeHtml(p.name);
-      return `<span class="${g.winner === p.name ? 'history-winner' : ''}">${safeName} (${detail})</span>`;
-    }).join('<span class="history-vs">vs</span>');
-
-    const statsLine = isAtW
-      ? `Around the World — Darts: ${players.map(p => p.dartsThrown).join(' / ')}`
-      : `Avg: ${players.map(p => p.average).join(' - ')}`;
-
-    html += `
-      <div class="history-item">
-        <div class="history-date">${date}</div>
-        <div class="history-result">${resultParts}</div>
-        <div class="history-stats">${statsLine}</div>
-      </div>
-    `;
-  }
-  container.innerHTML = html;
-}
-
-function clearHistory() {
-  if (confirm('Clear all match history?')) {
-    localStorage.removeItem(STORAGE_KEY);
-    renderHistory();
-  }
 }
 
 // ============================================================
@@ -1798,23 +1610,13 @@ function init() {
     });
   });
 
-  // Mode selector hides starting-score and best-of-sets rows when Around the World is picked
-  document.querySelectorAll('#mode-selector .set-option').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const isAtW = btn.dataset.mode === 'aroundWorld';
-      document.getElementById('score-group').style.display = isAtW ? 'none' : '';
-      document.getElementById('sets-group').style.display = isAtW ? 'none' : '';
-    });
-  });
-
   // Start game button
   document.getElementById('start-btn').addEventListener('click', () => {
     const name1 = document.getElementById('player1-name').value.trim() || 'Player 1';
     const name2 = document.getElementById('player2-name').value.trim() || 'Player 2';
-    const mode = document.querySelector('#mode-selector .set-option.active').dataset.mode;
     const bestOfSets = parseInt(document.querySelector('#sets-selector .set-option.active').dataset.sets, 10);
     const startingScore = parseInt(document.querySelector('#score-selector .set-option.active').dataset.score, 10);
-    startGame(name1, name2, bestOfSets, startingScore, mode);
+    startGame(name1, name2, bestOfSets, startingScore);
   });
 
   // Submit score
@@ -1868,19 +1670,15 @@ function init() {
       leaveRoom();
     } else {
       showScreen('setup-screen');
-      renderHistory();
     }
   });
 
   // Rematch button
   document.getElementById('rematch-btn').addEventListener('click', () => {
     if (game) {
-      startGame(game.players[0].name, game.players[1].name, game.bestOfSets, game.startingScore, game.mode);
+      startGame(game.players[0].name, game.players[1].name, game.bestOfSets, game.startingScore);
     }
   });
-
-  // Clear history
-  document.getElementById('clear-history-btn').addEventListener('click', clearHistory);
 
   // Online play
   document.getElementById('host-btn').addEventListener('click', hostGame);
@@ -1899,20 +1697,12 @@ function init() {
     btn.addEventListener('click', () => processCheckout(parseInt(btn.dataset.darts)));
   });
 
-  // Around-the-World hit buttons
-  document.querySelectorAll('.hit-btn').forEach(btn => {
-    btn.addEventListener('click', () => submitHits(parseInt(btn.dataset.hits, 10)));
-  });
-
   // Bull-up buttons
   document.getElementById('bullup-p1').addEventListener('click', () => completeBullUp(0));
   document.getElementById('bullup-p2').addEventListener('click', () => completeBullUp(1));
 
   // Preload voice clips for in-game callouts
   preloadVoiceClips();
-
-  // Initial screen is driven by onAuthStateChanged; default to login until that fires.
-  renderHistory();
 }
 
 // Clean up Firestore room if host closes/reloads the page
