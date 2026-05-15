@@ -549,10 +549,10 @@ function onAuthChanged(user) {
       startHeartbeat();
       subscribeFriendships();
       subscribeChallenges();
-      checkCurrentGame();
       loadUserDoc().then(data => {
         applyUserChipName(data);
         if (data && data.theme) applyTheme(data.theme, false);
+        checkCurrentGame();
       });
     }
 
@@ -1654,6 +1654,9 @@ function focusScoreInput() {
 function showScreen(screenId) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(screenId).classList.add('active');
+  if (screenId === 'setup-screen' && currentUser && !currentUser.isAnonymous) {
+    checkCurrentGame();
+  }
 }
 
 function render() {
