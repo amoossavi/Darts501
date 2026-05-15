@@ -81,54 +81,49 @@
       <button id="start-btn" class="btn btn-primary">Start Game</button>
     </div>
 
-    <div class="setup-card" id="online-card" role="group" aria-labelledby="online-heading">
-      <h2 id="online-heading">Online Play</h2>
-      <div class="online-actions">
-        <button id="host-btn" class="btn btn-secondary">Host Game</button>
-        <div class="online-join-row">
-          <input type="text" id="join-code" placeholder="" maxlength="6" autocomplete="off" aria-label="Room code">
-          <button id="join-btn" class="btn btn-secondary">Join</button>
-        </div>
-      </div>
-      <div id="room-info" class="room-info" style="display:none">
-        <div class="room-code-label">Room Code</div>
-        <div class="room-code" id="room-code-display"></div>
-        <button id="share-room-btn" class="btn btn-secondary btn-small">Share</button>
-        <div class="room-hint">Share this code with other players</div>
-      </div>
-    </div>
-
     <div class="setup-card" id="friends-card" role="group" aria-labelledby="friends-heading">
       <h2 id="friends-heading">Friends</h2>
-      <div class="friends-search">
-        <input type="email" id="friend-email-input" placeholder="Friend's email" autocomplete="off" aria-label="Friend's email address">
-        <button id="friend-add-btn" class="btn btn-secondary">Add</button>
+
+      <div class="friends-tabs" role="tablist" aria-label="Friends sections">
+        <button class="friends-tab active" role="tab" id="tab-btn-friends" aria-selected="true" aria-controls="tab-panel-friends" data-tab="friends">Friends</button>
+        <button class="friends-tab" role="tab" id="tab-btn-requests" aria-selected="false" aria-controls="tab-panel-requests" data-tab="requests">Requests<span class="tab-badge" id="badge-requests" hidden>0</span></button>
+        <button class="friends-tab" role="tab" id="tab-btn-challenges" aria-selected="false" aria-controls="tab-panel-challenges" data-tab="challenges">Challenges<span class="tab-badge" id="badge-challenges" hidden>0</span></button>
       </div>
+
       <div id="friend-status" class="friend-status" role="status" aria-live="polite"></div>
 
-      <div class="friends-section" id="challenges-incoming-section" style="display:none">
-        <h3 class="friends-subhead">Incoming Challenges</h3>
-        <div id="challenges-incoming" class="friends-list"></div>
+      <div class="friends-tab-panel active" role="tabpanel" id="tab-panel-friends" aria-labelledby="tab-btn-friends" data-panel="friends">
+        <div class="friends-search">
+          <input type="email" id="friend-email-input" placeholder="Add by email…" autocomplete="off" aria-label="Friend's email address">
+          <button id="friend-add-btn" class="btn btn-secondary">Add</button>
+        </div>
+        <div class="friends-section">
+          <div id="friends-accepted" class="friends-list"></div>
+        </div>
       </div>
 
-      <div class="friends-section" id="challenges-outgoing-section" style="display:none">
-        <h3 class="friends-subhead">Sent Challenges</h3>
-        <div id="challenges-outgoing" class="friends-list"></div>
+      <div class="friends-tab-panel" role="tabpanel" id="tab-panel-requests" aria-labelledby="tab-btn-requests" data-panel="requests" hidden>
+        <div class="friends-section" id="friends-incoming-section" style="display:none">
+          <h3 class="friends-subhead">Incoming</h3>
+          <div id="friends-incoming" class="friends-list"></div>
+        </div>
+        <div class="friends-section" id="friends-outgoing-section" style="display:none">
+          <h3 class="friends-subhead">Sent</h3>
+          <div id="friends-outgoing" class="friends-list"></div>
+        </div>
+        <div class="friends-empty" id="requests-empty">No pending requests.</div>
       </div>
 
-      <div class="friends-section" id="friends-incoming-section" style="display:none">
-        <h3 class="friends-subhead">Incoming Requests</h3>
-        <div id="friends-incoming" class="friends-list"></div>
-      </div>
-
-      <div class="friends-section" id="friends-outgoing-section" style="display:none">
-        <h3 class="friends-subhead">Sent Requests</h3>
-        <div id="friends-outgoing" class="friends-list"></div>
-      </div>
-
-      <div class="friends-section">
-        <h3 class="friends-subhead">My Friends</h3>
-        <div id="friends-accepted" class="friends-list"></div>
+      <div class="friends-tab-panel" role="tabpanel" id="tab-panel-challenges" aria-labelledby="tab-btn-challenges" data-panel="challenges" hidden>
+        <div class="friends-section" id="challenges-incoming-section" style="display:none">
+          <h3 class="friends-subhead">Incoming</h3>
+          <div id="challenges-incoming" class="friends-list"></div>
+        </div>
+        <div class="friends-section" id="challenges-outgoing-section" style="display:none">
+          <h3 class="friends-subhead">Sent</h3>
+          <div id="challenges-outgoing" class="friends-list"></div>
+        </div>
+        <div class="friends-empty" id="challenges-empty">No active challenges.</div>
       </div>
     </div>
 

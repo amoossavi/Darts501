@@ -449,7 +449,6 @@ function initFirebase() {
     if (typeof firebase === 'undefined' || !ENV.FIREBASE_API_KEY) {
       console.warn('Firebase not available — sign-in disabled');
       showFatalAuthError('Sign-in is unavailable. Please try again later.');
-      disableOnlinePlayUI();
       return;
     }
     firebase.initializeApp(firebaseConfig);
@@ -459,7 +458,6 @@ function initFirebase() {
   } catch (err) {
     console.error('Firebase init failed:', err);
     showFatalAuthError('Sign-in is unavailable. Please try again later.');
-    disableOnlinePlayUI();
   }
 }
 
@@ -692,12 +690,15 @@ function renderFriendships() {
 
   incomingSection.style.display = inc.length ? '' : 'none';
   outgoingSection.style.display = out.length ? '' : 'none';
+  document.getElementById('requests-empty').style.display = (inc.length || out.length) ? 'none' : '';
 
   incoming.innerHTML = inc.map(f => friendRowHtml(f, myUid, 'incoming')).join('');
   outgoing.innerHTML = out.map(f => friendRowHtml(f, myUid, 'outgoing')).join('');
   accepted.innerHTML = acc.length
     ? acc.map(f => friendRowHtml(f, myUid, 'accepted')).join('')
     : '<div class="friends-empty">No friends yet — add one above.</div>';
+
+  updateTabBadge('requests', inc.length);
 }
 
 // ============================================================
@@ -758,9 +759,6 @@ async function challengeFriend(pairId) {
   await hostGame();
   if (!isOnline || !roomCode) return;
 
-  // Hide the regular room-info card — challenger doesn't share a code.
-  document.getElementById('room-info').style.display = 'none';
-
   try {
     const ref = db.collection('challenges').doc();
     await ref.set({
@@ -798,9 +796,6 @@ function watchActiveChallenge(ref) {
       detachActiveChallenge();
       ref.delete().catch(() => {});
       startGame(myName, theirName, c.bestOfSets, c.startingScore);
-      // Skip the bull-up overlay — challenger throws first.
-      document.getElementById('bullup-overlay').style.display = 'none';
-      completeBullUp(0);
     } else if (c.status === 'declined' || c.status === 'cancelled') {
       const who = (c.toProfile && c.toProfile.displayName) || 'Friend';
       showMessage(`${who} declined`);
@@ -863,8 +858,35 @@ function renderChallenges() {
 
   incomingSection.style.display = inc.length ? '' : 'none';
   outgoingSection.style.display = out.length ? '' : 'none';
+  document.getElementById('challenges-empty').style.display = (inc.length || out.length) ? 'none' : '';
   incoming.innerHTML = inc.map(c => challengeRowHtml(c, 'incoming')).join('');
   outgoing.innerHTML = out.map(c => challengeRowHtml(c, 'outgoing')).join('');
+
+  updateTabBadge('challenges', inc.length);
+}
+
+function updateTabBadge(tab, count) {
+  const badge = document.getElementById(`badge-${tab}`);
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count;
+    badge.hidden = false;
+  } else {
+    badge.hidden = true;
+  }
+}
+
+function switchFriendsTab(tab) {
+  document.querySelectorAll('.friends-tab').forEach(btn => {
+    const active = btn.dataset.tab === tab;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('.friends-tab-panel').forEach(panel => {
+    const active = panel.dataset.panel === tab;
+    panel.classList.toggle('active', active);
+    panel.hidden = !active;
+  });
 }
 
 function challengeRowHtml(c, kind) {
@@ -919,13 +941,6 @@ function friendRowHtml(f, myUid, kind) {
     </div>`;
 }
 
-function disableOnlinePlayUI() {
-  const hostBtn = document.getElementById('host-btn');
-  const joinBtn = document.getElementById('join-btn');
-  if (hostBtn) { hostBtn.disabled = true; hostBtn.title = 'Online play unavailable'; }
-  if (joinBtn) { joinBtn.disabled = true; joinBtn.title = 'Online play unavailable'; }
-}
-
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   let code = '';
@@ -972,26 +987,6 @@ async function hostGame() {
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     isOnline = true;
-    document.getElementById('room-code-display').textContent = roomCode;
-    document.getElementById('room-info').style.display = '';
-    document.getElementById('host-btn').disabled = true;
-    document.getElementById('host-btn').textContent = 'Hosting';
-    showMessage('Room created: ' + roomCode);
-    // Listen for a player joining
-    let hostNotified = false;
-    unsubscribeGame = db.collection('games').doc(roomCode).onSnapshot(doc => {
-      if (!doc.exists) return;
-      const data = doc.data();
-      if (data.joined && !hostNotified) {
-        hostNotified = true;
-        const hint = document.querySelector('.room-hint');
-        if (hint) {
-          hint.textContent = 'Player joined!';
-          hint.style.color = 'var(--green)';
-          hint.style.fontWeight = '700';
-        }
-      }
-    });
   } catch (err) {
     showMessage('Failed to create room');
     isHost = false;
@@ -1122,29 +1117,6 @@ function syncGameToFirestore() {
   });
 }
 
-async function shareRoomCode() {
-  if (!roomCode) return;
-  const text = `Join my darts game! Room code: ${roomCode}`;
-
-  if (navigator.share) {
-    try {
-      await navigator.share({ text, url: window.location.href });
-    } catch (err) {
-      if (err.name !== 'AbortError') console.error('Share failed:', err);
-    }
-  } else if (navigator.clipboard) {
-    try {
-      await navigator.clipboard.writeText(text);
-      const btn = document.getElementById('share-room-btn');
-      const original = btn.textContent;
-      btn.textContent = 'Copied!';
-      setTimeout(() => { btn.textContent = original; }, 2000);
-    } catch {
-      showMessage('Failed to copy');
-    }
-  }
-}
-
 function leaveRoom() {
   if (unsubscribeGame) {
     unsubscribeGame();
@@ -1161,12 +1133,8 @@ function leaveRoom() {
   isHost = false;
   lastProcessedEventId = null;
   syncRetryCount = 0;
-  document.getElementById('room-info').style.display = 'none';
   document.getElementById('waiting-overlay').style.display = 'none';
   document.getElementById('game-room-info').style.display = 'none';
-  document.getElementById('host-btn').disabled = false;
-  document.getElementById('host-btn').textContent = 'Host Game';
-  document.getElementById('join-code').value = '';
   showScreen('setup-screen');
 }
 
@@ -1565,6 +1533,11 @@ function init() {
     else signOut();
   });
 
+  // Friends card tabs
+  document.querySelectorAll('.friends-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchFriendsTab(btn.dataset.tab));
+  });
+
   // Friends card
   document.getElementById('friend-add-btn').addEventListener('click', () => {
     sendFriendRequest(document.getElementById('friend-email-input').value);
@@ -1612,8 +1585,12 @@ function init() {
 
   // Start game button
   document.getElementById('start-btn').addEventListener('click', () => {
-    const name1 = document.getElementById('player1-name').value.trim() || 'Player 1';
-    const name2 = document.getElementById('player2-name').value.trim() || 'Player 2';
+    const name1 = document.getElementById('player1-name').value.trim();
+    const name2 = document.getElementById('player2-name').value.trim();
+    if (!name1 || !name2) {
+      showMessage('Enter a name for both players');
+      return;
+    }
     const bestOfSets = parseInt(document.querySelector('#sets-selector .set-option.active').dataset.sets, 10);
     const startingScore = parseInt(document.querySelector('#score-selector .set-option.active').dataset.score, 10);
     startGame(name1, name2, bestOfSets, startingScore);
@@ -1680,17 +1657,8 @@ function init() {
     }
   });
 
-  // Online play
-  document.getElementById('host-btn').addEventListener('click', hostGame);
-  document.getElementById('join-btn').addEventListener('click', () => {
-    const code = document.getElementById('join-code').value;
-    joinRoom(code);
-  });
-  document.getElementById('join-code').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') document.getElementById('join-btn').click();
-  });
+  // Leave-room button (waiting overlay)
   document.getElementById('leave-room-btn').addEventListener('click', leaveRoom);
-  document.getElementById('share-room-btn').addEventListener('click', shareRoomCode);
 
   // Checkout darts buttons
   document.querySelectorAll('.checkout-darts-btn').forEach(btn => {
