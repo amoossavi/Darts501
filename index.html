@@ -47,6 +47,7 @@
     <div id="user-chip" class="user-chip" style="display:none">
       <img id="user-chip-avatar" class="user-chip-avatar" alt="" referrerpolicy="no-referrer">
       <button id="user-chip-name" class="user-chip-name user-chip-name-btn" type="button" title="Edit username"></button>
+      <button id="stats-link-btn" class="btn btn-secondary btn-small">Stats</button>
       <button id="sign-out-btn" class="btn btn-secondary btn-small">Sign out</button>
     </div>
 
@@ -391,6 +392,41 @@
     <div class="gameover-buttons">
       <button id="rematch-btn" class="btn btn-primary">Rematch</button>
       <button id="new-game-btn" class="btn btn-secondary">New Game</button>
+    </div>
+  </div>
+
+  <!-- ==================== Stats Screen ==================== -->
+  <div id="stats-screen" class="screen">
+    <div class="stats-header">
+      <h2>Stats</h2>
+      <button id="stats-back-btn" class="btn btn-secondary btn-small">Back</button>
+    </div>
+
+    <div class="stats-empty" id="stats-empty" hidden>
+      No matches yet. Finish a game and stats will appear here.
+    </div>
+
+    <div class="stats-body" id="stats-body">
+      <div class="stats-headline" id="stats-headline"></div>
+
+      <div class="setup-card stats-card">
+        <h3 class="stats-section-title">3-dart average trend</h3>
+        <div id="stats-chart-wrap" class="stats-chart-wrap"></div>
+        <div class="stats-chart-legend">
+          <span class="legend-dot legend-avg"></span> 3-dart avg per match
+          <span class="legend-dot legend-mean"></span> Lifetime avg
+        </div>
+      </div>
+
+      <div class="setup-card stats-card">
+        <h3 class="stats-section-title">Records</h3>
+        <div class="stats-grid" id="stats-records"></div>
+      </div>
+
+      <div class="setup-card stats-card">
+        <h3 class="stats-section-title">Head-to-head</h3>
+        <div id="stats-h2h" class="stats-h2h"></div>
+      </div>
     </div>
   </div>
 

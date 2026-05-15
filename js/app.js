@@ -526,11 +526,13 @@ function onAuthChanged(user) {
     const friendsCard = document.getElementById('friends-card');
 
     const onlineToggle = document.querySelector('.mode-toggle-btn[data-mode="online"]');
+    const statsBtn = document.getElementById('stats-link-btn');
     if (user.isAnonymous) {
       if (avatar) avatar.style.display = 'none';
       if (name) name.textContent = 'Guest';
       if (signBtn) signBtn.textContent = 'Sign in';
       if (onlineToggle) onlineToggle.hidden = true;
+      if (statsBtn) statsBtn.hidden = true;
       switchMode('local');
       stopHeartbeat();
       unsubscribeFriendships();
@@ -541,6 +543,7 @@ function onAuthChanged(user) {
       if (name) name.textContent = user.displayName || user.email || 'Signed in';
       if (signBtn) signBtn.textContent = 'Sign out';
       if (onlineToggle) onlineToggle.hidden = false;
+      if (statsBtn) statsBtn.hidden = false;
 
       const p1 = document.getElementById('player1-name');
       if (p1 && !p1.value.trim() && user.displayName) p1.value = user.displayName;
@@ -705,6 +708,329 @@ function setActiveGameRoom(code) {
     uid: currentUser.uid,
     activeGameRoomCode: value
   }, { merge: true }).catch(err => console.warn('activeGameRoom write failed:', err));
+}
+
+// ============================================================
+// Match persistence + stats aggregation
+// ============================================================
+
+let lastPersistedMatchSig = null;
+
+function buildMatchData() {
+  const participants = game.players.map(p => p.uid).filter(Boolean);
+  return {
+    participants,
+    bestOfSets: game.bestOfSets,
+    startingScore: game.startingScore,
+    startedAt: game.startedAt,
+    endedAt: game.endedAt || Date.now(),
+    winnerIndex: game.winner,
+    players: game.players.map(p => ({
+      uid: p.uid || null,
+      name: p.name,
+      photoURL: p.photoURL || '',
+      sets: p.sets,
+      matchDarts: p.matchDarts,
+      checkouts: p.checkouts.slice(),
+      shotsAtCheckout: p.shotsAtCheckout || 0,
+      matchVisits: p.matchVisits.slice()
+    })),
+    legs: game.legHistory || []
+  };
+}
+
+function statsFromMatch(matchData, myIndex) {
+  const me = matchData.players[myIndex];
+  const visits = me.matchVisits || [];
+  const validVisits = visits.filter(v => !v.busted);
+  const busts = visits.length - validVisits.length;
+  const totalScore = validVisits.reduce((s, v) => s + v.score, 0);
+  const c180 = validVisits.filter(v => v.score === 180).length;
+  const c140 = validVisits.filter(v => v.score >= 140).length;
+  const c100 = validVisits.filter(v => v.score >= 100).length;
+  const highestVisit = validVisits.reduce((m, v) => Math.max(m, v.score), 0);
+  const highestCheckout = me.checkouts.reduce((m, c) => Math.max(m, c), 0);
+
+  let bestLeg = null;
+  let first9Score = 0;
+  let first9Darts = 0;
+  for (const leg of matchData.legs || []) {
+    if (leg.winner === myIndex) {
+      const myLegDarts = leg.darts && leg.darts[myIndex];
+      if (typeof myLegDarts === 'number' && (bestLeg === null || myLegDarts < bestLeg)) {
+        bestLeg = myLegDarts;
+      }
+    }
+    const myVisits = (leg.visits && leg.visits[myIndex]) || [];
+    let darts = 0;
+    let score = 0;
+    for (const v of myVisits) {
+      if (darts >= 9) break;
+      if (!v.busted) score += v.score;
+      darts += 3;
+    }
+    first9Score += score;
+    first9Darts += Math.min(9, darts);
+  }
+
+  return {
+    matchesPlayed: 1,
+    matchesWon: matchData.winnerIndex === myIndex ? 1 : 0,
+    totalDarts: me.matchDarts,
+    totalScore,
+    totalVisits: visits.length,
+    bustCount: busts,
+    count180: c180,
+    count140Plus: c140,
+    count100Plus: c100,
+    highestVisit,
+    highestCheckout,
+    bestLeg,
+    shotsAtCheckout: me.shotsAtCheckout || 0,
+    successfulCheckouts: me.checkouts.length,
+    first9Score,
+    first9Darts,
+    lastMatchAt: matchData.endedAt
+  };
+}
+
+function mergeStats(existing, delta) {
+  const merged = { ...existing };
+  const add = (k) => { merged[k] = (existing[k] || 0) + (delta[k] || 0); };
+  ['matchesPlayed','matchesWon','totalDarts','totalScore','totalVisits','bustCount',
+   'count180','count140Plus','count100Plus','shotsAtCheckout','successfulCheckouts',
+   'first9Score','first9Darts'].forEach(add);
+
+  merged.highestVisit = Math.max(existing.highestVisit || 0, delta.highestVisit || 0);
+  merged.highestCheckout = Math.max(existing.highestCheckout || 0, delta.highestCheckout || 0);
+  if (typeof delta.bestLeg === 'number') {
+    merged.bestLeg = existing.bestLeg ? Math.min(existing.bestLeg, delta.bestLeg) : delta.bestLeg;
+  }
+
+  if (delta.matchesWon === 1) {
+    merged.currentWinStreak = (existing.currentWinStreak || 0) + 1;
+    merged.longestWinStreak = Math.max(existing.longestWinStreak || 0, merged.currentWinStreak);
+  } else {
+    merged.currentWinStreak = 0;
+  }
+
+  merged.lastMatchAt = delta.lastMatchAt;
+  return merged;
+}
+
+async function persistMatchDoc(matchData) {
+  if (!db) return;
+  if (!matchData.participants || matchData.participants.length === 0) return;
+  const matchId = `${matchData.startedAt}_${roomCode || 'local'}`;
+  try {
+    await db.collection('matches').doc(matchId).set(matchData, { merge: true });
+  } catch (err) {
+    console.warn('Match doc write failed:', err);
+  }
+}
+
+async function persistOwnStats(matchData) {
+  if (!db || !currentUser || currentUser.isAnonymous) return;
+  const myIndex = matchData.players.findIndex(p => p.uid === currentUser.uid);
+  if (myIndex < 0) return;
+  const delta = statsFromMatch(matchData, myIndex);
+  const ref = db.collection('userStats').doc(currentUser.uid);
+  try {
+    await db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      const existing = snap.exists ? snap.data() : {};
+      tx.set(ref, mergeStats(existing, delta));
+    });
+  } catch (err) {
+    console.warn('userStats update failed:', err);
+  }
+}
+
+async function persistFinishedMatch() {
+  if (!game || !game.gameOver) return;
+  const sig = `${game.startedAt}_${roomCode || 'local'}`;
+  if (lastPersistedMatchSig === sig) return;
+  lastPersistedMatchSig = sig;
+  const matchData = buildMatchData();
+  await Promise.all([
+    persistMatchDoc(matchData),
+    persistOwnStats(matchData)
+  ]);
+}
+
+// ============================================================
+// Stats screen
+// ============================================================
+
+async function openStatsScreen() {
+  if (!currentUser || currentUser.isAnonymous) return;
+  showScreen('stats-screen');
+  const empty = document.getElementById('stats-empty');
+  const body = document.getElementById('stats-body');
+  empty.hidden = true;
+  body.hidden = false;
+  try {
+    const [statsSnap, matchesSnap] = await Promise.all([
+      db.collection('userStats').doc(currentUser.uid).get({ source: 'server' }),
+      db.collection('matches').where('participants', 'array-contains', currentUser.uid).get()
+    ]);
+    const stats = statsSnap.exists ? statsSnap.data() : null;
+    const matches = matchesSnap.docs.map(d => d.data()).sort((a, b) => (a.endedAt || 0) - (b.endedAt || 0));
+    if (!stats || !stats.matchesPlayed) {
+      body.hidden = true;
+      empty.hidden = false;
+      return;
+    }
+    renderHeadlineStats(stats);
+    renderRecords(stats);
+    renderHeadToHead(matches);
+    renderAverageChart(matches, stats);
+  } catch (err) {
+    console.warn('Stats load failed:', err);
+  }
+}
+
+function fmt(value, decimals) {
+  if (value == null || isNaN(value)) return '—';
+  return decimals === undefined ? String(value) : Number(value).toFixed(decimals);
+}
+
+function renderHeadlineStats(s) {
+  const winRate = s.matchesPlayed ? (s.matchesWon / s.matchesPlayed) * 100 : 0;
+  const avg = s.totalDarts ? (s.totalScore / s.totalDarts) * 3 : 0;
+  const first9 = s.first9Darts ? (s.first9Score / s.first9Darts) * 3 : 0;
+  const checkoutPct = s.shotsAtCheckout ? (s.successfulCheckouts / s.shotsAtCheckout) * 100 : 0;
+  const tiles = [
+    { label: '3-dart avg', value: fmt(avg, 1) },
+    { label: 'First 9 avg', value: fmt(first9, 1) },
+    { label: 'Matches', value: fmt(s.matchesPlayed), sub: `${fmt(s.matchesWon)}W / ${fmt(s.matchesPlayed - s.matchesWon)}L` },
+    { label: 'Win %', value: fmt(winRate, 0) + '%' },
+    { label: '180s', value: fmt(s.count180) },
+    { label: 'Checkout %', value: fmt(checkoutPct, 0) + '%' }
+  ];
+  document.getElementById('stats-headline').innerHTML = tiles.map(t => `
+    <div class="stats-tile">
+      <div class="stats-tile-label">${escapeHtml(t.label)}</div>
+      <div class="stats-tile-value">${escapeHtml(String(t.value))}</div>
+      ${t.sub ? `<div class="stats-tile-sub">${escapeHtml(t.sub)}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderRecords(s) {
+  const records = [
+    { label: 'Highest checkout', value: fmt(s.highestCheckout) },
+    { label: 'Highest visit', value: fmt(s.highestVisit) },
+    { label: 'Best leg (darts)', value: fmt(s.bestLeg) },
+    { label: '140+', value: fmt(s.count140Plus) },
+    { label: '100+', value: fmt(s.count100Plus) },
+    { label: 'Busts', value: fmt(s.bustCount) },
+    { label: 'Current streak', value: fmt(s.currentWinStreak) },
+    { label: 'Longest streak', value: fmt(s.longestWinStreak) }
+  ];
+  document.getElementById('stats-records').innerHTML = records.map(r => `
+    <div class="stats-tile">
+      <div class="stats-tile-label">${escapeHtml(r.label)}</div>
+      <div class="stats-tile-value">${escapeHtml(String(r.value))}</div>
+    </div>
+  `).join('');
+}
+
+function renderHeadToHead(matches) {
+  const me = currentUser.uid;
+  const byOpponent = new Map();
+  for (const m of matches) {
+    const myIdx = m.players.findIndex(p => p.uid === me);
+    if (myIdx < 0) continue;
+    const oppIdx = myIdx === 0 ? 1 : 0;
+    const opp = m.players[oppIdx];
+    if (!opp || !opp.uid) continue;
+    const rec = byOpponent.get(opp.uid) || { name: opp.name, photoURL: opp.photoURL, wins: 0, losses: 0 };
+    rec.name = opp.name; rec.photoURL = opp.photoURL;
+    if (m.winnerIndex === myIdx) rec.wins++; else rec.losses++;
+    byOpponent.set(opp.uid, rec);
+  }
+  const rows = [...byOpponent.values()].sort((a, b) => (b.wins + b.losses) - (a.wins + a.losses));
+  const container = document.getElementById('stats-h2h');
+  if (rows.length === 0) {
+    container.innerHTML = '<div class="friends-empty">No online matches yet.</div>';
+    return;
+  }
+  container.innerHTML = rows.map(r => {
+    const photo = r.photoURL
+      ? `<img class="friend-avatar" src="${escapeHtml(r.photoURL)}" alt="" referrerpolicy="no-referrer">`
+      : '<div class="friend-avatar friend-avatar-placeholder"></div>';
+    return `
+      <div class="friend-row">
+        <div class="friend-avatar-wrap">${photo}</div>
+        <div class="friend-info">
+          <div class="friend-name">${escapeHtml(r.name || 'Unknown')}</div>
+        </div>
+        <div class="stats-h2h-record">${r.wins}W – ${r.losses}L</div>
+      </div>`;
+  }).join('');
+}
+
+function renderAverageChart(matches, stats) {
+  const wrap = document.getElementById('stats-chart-wrap');
+  const me = currentUser.uid;
+  const points = [];
+  for (const m of matches) {
+    const myIdx = m.players.findIndex(p => p.uid === me);
+    if (myIdx < 0) continue;
+    const player = m.players[myIdx];
+    const visits = player.matchVisits || [];
+    const validVisits = visits.filter(v => !v.busted);
+    const totalScore = validVisits.reduce((s, v) => s + v.score, 0);
+    if (!player.matchDarts) continue;
+    const avg = (totalScore / player.matchDarts) * 3;
+    points.push({ x: m.endedAt || 0, y: avg });
+  }
+  if (points.length === 0) {
+    wrap.innerHTML = '<div class="friends-empty">No completed matches yet.</div>';
+    return;
+  }
+
+  const w = 640, h = 220, padL = 36, padR = 12, padT = 14, padB = 24;
+  const innerW = w - padL - padR;
+  const innerH = h - padT - padB;
+  const maxY = Math.max(...points.map(p => p.y), 60);
+  const minY = Math.min(...points.map(p => p.y), 20);
+  const niceMax = Math.ceil(maxY / 10) * 10;
+  const niceMin = Math.max(0, Math.floor(minY / 10) * 10);
+  const yRange = niceMax - niceMin || 1;
+  const xStep = points.length > 1 ? innerW / (points.length - 1) : 0;
+  const xy = points.map((p, i) => ({
+    x: padL + i * xStep,
+    y: padT + innerH - ((p.y - niceMin) / yRange) * innerH
+  }));
+  const pathD = xy.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
+
+  const lifetimeAvg = stats.totalDarts ? (stats.totalScore / stats.totalDarts) * 3 : 0;
+  const meanY = padT + innerH - ((lifetimeAvg - niceMin) / yRange) * innerH;
+
+  const yTicks = 4;
+  const tickLines = [];
+  const tickLabels = [];
+  for (let i = 0; i <= yTicks; i++) {
+    const y = padT + (innerH * i / yTicks);
+    const value = niceMax - ((niceMax - niceMin) * i / yTicks);
+    tickLines.push(`<line class="chart-grid" x1="${padL}" y1="${y}" x2="${w - padR}" y2="${y}"></line>`);
+    tickLabels.push(`<text class="chart-label" x="${padL - 6}" y="${y + 3}" text-anchor="end">${value.toFixed(0)}</text>`);
+  }
+
+  const pointEls = xy.map(p => `<circle class="chart-point" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3"></circle>`).join('');
+
+  wrap.innerHTML = `
+    <svg class="stats-chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">
+      ${tickLines.join('')}
+      <line class="chart-axis" x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + innerH}"></line>
+      <line class="chart-axis" x1="${padL}" y1="${padT + innerH}" x2="${w - padR}" y2="${padT + innerH}"></line>
+      ${tickLabels.join('')}
+      <line class="chart-mean" x1="${padL}" y1="${meanY.toFixed(1)}" x2="${w - padR}" y2="${meanY.toFixed(1)}"></line>
+      <path class="chart-line" d="${pathD}"></path>
+      ${pointEls}
+    </svg>`;
 }
 
 async function checkCurrentGame() {
@@ -1022,7 +1348,7 @@ function watchActiveChallenge(ref) {
       const theirPhoto = (c.toProfile && c.toProfile.photoURL) || '';
       detachActiveChallenge();
       ref.delete().catch(() => {});
-      startGame(myName, theirName, c.bestOfSets, c.startingScore, myPhoto, theirPhoto);
+      startGame(myName, theirName, c.bestOfSets, c.startingScore, myPhoto, theirPhoto, currentUser.uid, c.to);
     } else if (c.status === 'declined' || c.status === 'cancelled') {
       const who = (c.toProfile && c.toProfile.displayName) || 'Friend';
       showMessage(`${who} declined`);
@@ -1307,6 +1633,7 @@ function subscribeToGame() {
 
     if (game.gameOver) {
       setActiveGameRoom(null);
+      persistFinishedMatch().catch(err => console.warn('Match persist failed:', err));
       showRoomCodeOnGameScreen();
       showGameOver();
     } else {
@@ -1378,10 +1705,11 @@ function leaveRoom() {
 // Game state
 let game = null;
 
-function createPlayer(name, startingScore, photoURL) {
+function createPlayer(name, startingScore, photoURL, uid) {
   return {
     name: name,
     photoURL: photoURL || '',
+    uid: uid || null,
     score: startingScore,
     darts: 0,
     visits: [],
@@ -1390,19 +1718,22 @@ function createPlayer(name, startingScore, photoURL) {
     matchDarts: 0,
     matchVisits: [],
     checkouts: [],
+    shotsAtCheckout: 0,
   };
 }
 
-function startGame(name1, name2, bestOfSets, startingScore, photoURL1, photoURL2) {
+function startGame(name1, name2, bestOfSets, startingScore, photoURL1, photoURL2, uid1, uid2) {
   const score = startingScore || 501;
   game = {
-    players: [createPlayer(name1, score, photoURL1), createPlayer(name2, score, photoURL2)],
+    players: [createPlayer(name1, score, photoURL1, uid1), createPlayer(name2, score, photoURL2, uid2)],
     currentPlayer: 0,
     legStartingPlayer: 0,
     bestOfSets: bestOfSets || 1,
     startingScore: score,
     gameOver: false,
     winner: null,
+    startedAt: Date.now(),
+    legHistory: [],
   };
 
   localStorage.setItem('darts501_playerNames', JSON.stringify([name1, name2]));
@@ -1478,6 +1809,8 @@ function submitScore(points) {
 
   const player = getCurrentPlayer();
 
+  if (player.score <= 170) player.shotsAtCheckout = (player.shotsAtCheckout || 0) + 1;
+
   if (isBust(player.score, points)) {
     showScoreOverlay(points, true);
     showMessage('BUST! Score reverted.');
@@ -1523,13 +1856,25 @@ function processCheckout(dartsUsed) {
   const overlay = document.getElementById('checkout-darts-overlay');
   overlay.style.display = 'none';
 
-  const player = game.players[parseInt(overlay.dataset.playerIndex)];
+  const winnerIndex = parseInt(overlay.dataset.playerIndex);
+  const player = game.players[winnerIndex];
   const points = parseInt(overlay.dataset.points);
 
   // Adjust dart count (we already added 3)
   player.darts += dartsUsed - 3;
 
   player.checkouts.push(points);
+
+  // Record per-leg breakdown before the leg state resets
+  game.legHistory = game.legHistory || [];
+  game.legHistory.push({
+    winner: winnerIndex,
+    starter: game.legStartingPlayer,
+    darts: { 0: game.players[0].darts, 1: game.players[1].darts },
+    visits: { 0: game.players[0].visits.slice(), 1: game.players[1].visits.slice() },
+    checkout: { value: points, dartsUsed: dartsUsed }
+  });
+
   player.legs++;
   const setsToWin = Math.ceil(game.bestOfSets / 2);
 
@@ -1546,10 +1891,12 @@ function processCheckout(dartsUsed) {
         p.matchVisits = p.matchVisits.concat(p.visits);
       }
       game.gameOver = true;
-      game.winner = parseInt(overlay.dataset.playerIndex);
+      game.winner = winnerIndex;
+      game.endedAt = Date.now();
       fireEvent({ id: Date.now(), type: 'matchWon', playerName: player.name });
       syncGameToFirestore();
       setActiveGameRoom(null);
+      persistFinishedMatch().catch(err => console.warn('Match persist failed:', err));
       showGameOver();
       return;
     }
@@ -1783,6 +2130,9 @@ function init() {
     else signOut();
   });
 
+  document.getElementById('stats-link-btn').addEventListener('click', openStatsScreen);
+  document.getElementById('stats-back-btn').addEventListener('click', () => showScreen('setup-screen'));
+
   // Edit username
   document.getElementById('user-chip-name').addEventListener('click', openUsernameDialog);
   document.getElementById('username-cancel-btn').addEventListener('click', closeUsernameDialog);
@@ -1917,7 +2267,7 @@ function init() {
   // Rematch button
   document.getElementById('rematch-btn').addEventListener('click', () => {
     if (game) {
-      startGame(game.players[0].name, game.players[1].name, game.bestOfSets, game.startingScore, game.players[0].photoURL, game.players[1].photoURL);
+      startGame(game.players[0].name, game.players[1].name, game.bestOfSets, game.startingScore, game.players[0].photoURL, game.players[1].photoURL, game.players[0].uid, game.players[1].uid);
     }
   });
 
