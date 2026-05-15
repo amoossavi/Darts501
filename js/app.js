@@ -709,21 +709,26 @@ function setActiveGameRoom(code) {
 }
 
 async function checkCurrentGame() {
+  console.log('[checkCurrentGame] entered');
   const card = document.getElementById('current-game-card');
-  if (!card) return;
+  if (!card) { console.log('[checkCurrentGame] no card el'); return; }
   card.hidden = true;
-  if (!db || !currentUser || currentUser.isAnonymous) return;
+  console.log('[checkCurrentGame] state', { hasDb: !!db, hasUser: !!currentUser, anon: currentUser && currentUser.isAnonymous });
+  if (!db || !currentUser || currentUser.isAnonymous) { console.log('[checkCurrentGame] skipping'); return; }
   try {
     const userDoc = await db.collection('users').doc(currentUser.uid).get();
     const code = userDoc.exists && userDoc.data().activeGameRoomCode;
+    console.log('[checkCurrentGame] activeGameRoomCode =', code);
     if (!code) return;
     const gameDoc = await db.collection('games').doc(code).get();
+    console.log('[checkCurrentGame] gameDoc.exists =', gameDoc.exists);
     if (!gameDoc.exists) {
       setActiveGameRoom(null);
       return;
     }
     const data = gameDoc.data() || {};
     if (data.game && data.game.gameOver) {
+      console.log('[checkCurrentGame] gameOver, clearing');
       setActiveGameRoom(null);
       return;
     }
@@ -744,8 +749,9 @@ async function checkCurrentGame() {
     }
     card.dataset.roomCode = code;
     card.hidden = false;
+    console.log('[checkCurrentGame] CARD SHOWN');
   } catch (err) {
-    console.warn('Current-game check failed:', err);
+    console.warn('[checkCurrentGame] Current-game check failed:', err);
   }
 }
 
