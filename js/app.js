@@ -717,7 +717,9 @@ async function checkCurrentGame() {
   if (!db || !currentUser || currentUser.isAnonymous) { console.log('[checkCurrentGame] skipping'); return; }
   try {
     const userDoc = await db.collection('users').doc(currentUser.uid).get();
-    const code = userDoc.exists && userDoc.data().activeGameRoomCode;
+    const userData = userDoc.data();
+    console.log('[checkCurrentGame] full user doc:', JSON.stringify(userData));
+    const code = userDoc.exists && userData && userData.activeGameRoomCode;
     console.log('[checkCurrentGame] activeGameRoomCode =', code);
     if (!code) return;
     const gameDoc = await db.collection('games').doc(code).get();
