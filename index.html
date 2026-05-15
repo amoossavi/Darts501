@@ -52,19 +52,11 @@
     <h1 class="app-title">DARTS <span>501</span></h1>
 
     <div class="mode-toggle" role="tablist" aria-label="Match type">
-      <button class="mode-toggle-btn active" role="tab" aria-selected="true" data-mode="local">Local</button>
-      <button class="mode-toggle-btn" role="tab" aria-selected="false" data-mode="online">Online</button>
+      <button class="mode-toggle-btn" role="tab" aria-selected="false" data-mode="local">Local</button>
+      <button class="mode-toggle-btn active" role="tab" aria-selected="true" data-mode="online">Online</button>
     </div>
 
-    <div class="setup-card" id="local-play-card">
-      <div class="input-group">
-        <label for="player1-name">Player 1</label>
-        <input type="text" id="player1-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
-      </div>
-      <div class="input-group">
-        <label for="player2-name">Player 2</label>
-        <input type="text" id="player2-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
-      </div>
+    <div class="setup-card" id="match-settings-card">
       <div class="input-group" id="score-group">
         <label id="score-label">Starting Score</label>
         <div class="sets-selector" id="score-selector" role="radiogroup" aria-labelledby="score-label">
@@ -81,12 +73,24 @@
           <button class="set-option" data-sets="7" role="radio" aria-checked="false">7</button>
         </div>
       </div>
+    </div>
+
+    <div class="setup-card" id="local-play-card" hidden>
+      <div class="input-group">
+        <label for="player1-name">Player 1</label>
+        <input type="text" id="player1-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
+      </div>
+      <div class="input-group">
+        <label for="player2-name">Player 2</label>
+        <input type="text" id="player2-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
+      </div>
       <button id="start-btn" class="btn btn-primary">Start Game</button>
     </div>
 
-    <div class="setup-card" id="friends-card" aria-label="Friends" hidden>
+    <div class="setup-card" id="friends-card" aria-label="Friends">
       <div class="friends-tabs" role="tablist" aria-label="Friends sections">
         <button class="friends-tab active" role="tab" id="tab-btn-friends" aria-selected="true" aria-controls="tab-panel-friends" data-tab="friends">Friends</button>
+        <button class="friends-tab" role="tab" id="tab-btn-add" aria-selected="false" aria-controls="tab-panel-add" data-tab="add">Add</button>
         <button class="friends-tab" role="tab" id="tab-btn-requests" aria-selected="false" aria-controls="tab-panel-requests" data-tab="requests">Requests<span class="tab-badge" id="badge-requests" hidden>0</span></button>
         <button class="friends-tab" role="tab" id="tab-btn-challenges" aria-selected="false" aria-controls="tab-panel-challenges" data-tab="challenges">Challenges<span class="tab-badge" id="badge-challenges" hidden>0</span></button>
       </div>
@@ -94,12 +98,15 @@
       <div id="friend-status" class="friend-status" role="status" aria-live="polite"></div>
 
       <div class="friends-tab-panel active" role="tabpanel" id="tab-panel-friends" aria-labelledby="tab-btn-friends" data-panel="friends">
-        <div class="friends-search">
-          <input type="email" id="friend-email-input" placeholder="Add by email…" autocomplete="off" aria-label="Friend's email address">
-          <button id="friend-add-btn" class="btn btn-secondary">Add</button>
-        </div>
         <div class="friends-section">
           <div id="friends-accepted" class="friends-list"></div>
+        </div>
+      </div>
+
+      <div class="friends-tab-panel" role="tabpanel" id="tab-panel-add" aria-labelledby="tab-btn-add" data-panel="add" hidden>
+        <div class="friends-search">
+          <input type="email" id="friend-email-input" placeholder="Friend's email" autocomplete="off" aria-label="Friend's email address">
+          <button id="friend-add-btn" class="btn btn-secondary">Send Request</button>
         </div>
       </div>
 

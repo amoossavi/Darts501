@@ -650,6 +650,7 @@ async function sendFriendRequest(rawEmail) {
     });
     document.getElementById('friend-email-input').value = '';
     setFriendStatus('Request sent');
+    switchFriendsTab('requests');
   } catch (err) {
     console.error('Friend request failed:', err);
     setFriendStatus('Could not send request', true);
@@ -756,7 +757,7 @@ function renderFriendships() {
   outgoing.innerHTML = out.map(f => friendRowHtml(f, myUid, 'outgoing')).join('');
   accepted.innerHTML = acc.length
     ? acc.map(f => friendRowHtml(f, myUid, 'accepted')).join('')
-    : '<div class="friends-empty">No friends yet — add one above.</div>';
+    : '<div class="friends-empty">No friends yet — use the Add tab.</div>';
 
   updateTabBadge('requests', inc.length);
 }
