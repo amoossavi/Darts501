@@ -603,7 +603,7 @@ let currentUserDocCache = null;
 async function loadUserDoc() {
   if (!db || !currentUser) return null;
   try {
-    const snap = await db.collection('users').doc(currentUser.uid).get();
+    const snap = await db.collection('users').doc(currentUser.uid).get({ source: 'server' });
     currentUserDocCache = snap.exists ? snap.data() : null;
   } catch (err) {
     console.warn('Load user doc failed:', err);
@@ -709,28 +709,22 @@ function setActiveGameRoom(code) {
 }
 
 async function checkCurrentGame() {
-  console.log('[checkCurrentGame] entered');
   const card = document.getElementById('current-game-card');
-  if (!card) { console.log('[checkCurrentGame] no card el'); return; }
+  if (!card) return;
   card.hidden = true;
-  console.log('[checkCurrentGame] state', { hasDb: !!db, hasUser: !!currentUser, anon: currentUser && currentUser.isAnonymous });
-  if (!db || !currentUser || currentUser.isAnonymous) { console.log('[checkCurrentGame] skipping'); return; }
+  if (!db || !currentUser || currentUser.isAnonymous) return;
   try {
-    const userDoc = await db.collection('users').doc(currentUser.uid).get();
+    const userDoc = await db.collection('users').doc(currentUser.uid).get({ source: 'server' });
     const userData = userDoc.data();
-    console.log('[checkCurrentGame] full user doc:', JSON.stringify(userData));
     const code = userDoc.exists && userData && userData.activeGameRoomCode;
-    console.log('[checkCurrentGame] activeGameRoomCode =', code);
     if (!code) return;
-    const gameDoc = await db.collection('games').doc(code).get();
-    console.log('[checkCurrentGame] gameDoc.exists =', gameDoc.exists);
+    const gameDoc = await db.collection('games').doc(code).get({ source: 'server' });
     if (!gameDoc.exists) {
       setActiveGameRoom(null);
       return;
     }
     const data = gameDoc.data() || {};
     if (data.game && data.game.gameOver) {
-      console.log('[checkCurrentGame] gameOver, clearing');
       setActiveGameRoom(null);
       return;
     }
@@ -751,9 +745,8 @@ async function checkCurrentGame() {
     }
     card.dataset.roomCode = code;
     card.hidden = false;
-    console.log('[checkCurrentGame] CARD SHOWN');
   } catch (err) {
-    console.warn('[checkCurrentGame] Current-game check failed:', err);
+    console.warn('Current-game check failed:', err);
   }
 }
 
