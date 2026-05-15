@@ -989,7 +989,8 @@ button:focus-visible {
     align-content: start;
   }
 
-  #setup-screen .app-title {
+  #setup-screen .app-title,
+  #setup-screen .user-chip {
     grid-column: 1 / -1;
   }
 
@@ -1115,15 +1116,15 @@ button:focus-visible {
 }
 
 .user-chip-avatar {
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
 }
 
 .user-chip-name {
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   font-weight: 600;
   color: var(--text);
   flex: 1;
