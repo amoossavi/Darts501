@@ -12,12 +12,38 @@ service cloud.firestore {
 
     // User profile directory. Any signed-in user can read profiles so
     // the "add friend by email" lookup works. Each user can only write
-    // their own profile doc.
+    // their own profile doc. If `username` is changing, enforce a 24h
+    // cooldown via `usernameUpdatedAt`.
     match /users/{uid} {
+      function usernameUnchanged() {
+        return resource == null
+          ? !('username' in request.resource.data)
+          : request.resource.data.get('username', null) == resource.data.get('username', null);
+      }
+      function cooldownPassed() {
+        return resource == null
+          || resource.data.get('usernameUpdatedAt', null) == null
+          || request.time > resource.data.usernameUpdatedAt + duration.value(24, 'h');
+      }
+
       allow read: if signedIn();
-      allow create, update: if isSelf(uid)
+      allow create: if isSelf(uid)
         && request.resource.data.uid == uid;
+      allow update: if isSelf(uid)
+        && request.resource.data.uid == uid
+        && (usernameUnchanged() || cooldownPassed());
       allow delete: if false;
+    }
+
+    // Username directory: doc id is the lowercased username, value is
+    // the owning uid. Acts as a uniqueness index. A user can only
+    // create/delete entries pointing at their own uid.
+    match /usernames/{username} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+      allow update: if false;
     }
 
     // Friendship docs are keyed by sorted-uid pair, e.g. "abc_xyz".

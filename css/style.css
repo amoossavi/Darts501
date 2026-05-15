@@ -1237,6 +1237,71 @@ button:focus-visible {
   text-overflow: ellipsis;
 }
 
+.user-chip-name-btn {
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.user-chip-name-btn:hover {
+  background: var(--input-bg);
+}
+
+.user-chip-name-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.username-card {
+  text-align: left;
+  max-width: 380px;
+}
+
+.username-card h2 {
+  text-align: center;
+}
+
+.username-hint {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+}
+
+.username-card input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 1.05rem;
+  margin-bottom: 4px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.username-card input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.username-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.username-actions .btn {
+  flex: 1;
+  width: auto;
+  margin-top: 0;
+}
+
 .user-chip .btn {
   margin-left: auto;
   flex-shrink: 0;

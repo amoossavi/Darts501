@@ -9,7 +9,7 @@ const legWonAudio = new Audio('audio/leg-won.mp3');
 // Theme Switcher
 // ============================================================
 
-function applyTheme(theme) {
+function applyTheme(theme, persist) {
   if (theme === 'default') {
     document.documentElement.removeAttribute('data-theme');
   } else {
@@ -21,15 +21,23 @@ function applyTheme(theme) {
   document.querySelectorAll('.theme-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.theme === theme);
   });
+
+  if (persist && db && currentUser && !currentUser.isAnonymous) {
+    db.collection('users').doc(currentUser.uid).set({
+      uid: currentUser.uid,
+      theme: theme
+    }, { merge: true }).catch(err => console.warn('Theme write failed:', err));
+    if (currentUserDocCache) currentUserDocCache.theme = theme;
+  }
 }
 
 function initTheme() {
   const saved = localStorage.getItem(THEME_STORAGE_KEY) || 'default';
-  applyTheme(saved);
+  applyTheme(saved, false);
 
   document.querySelectorAll('.theme-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      applyTheme(btn.dataset.theme);
+      applyTheme(btn.dataset.theme, true);
     });
   });
 }
@@ -542,6 +550,10 @@ function onAuthChanged(user) {
       subscribeFriendships();
       subscribeChallenges();
       checkCurrentGame();
+      loadUserDoc().then(data => {
+        applyUserChipName(data);
+        if (data && data.theme) applyTheme(data.theme, false);
+      });
     }
 
     if (chip) chip.style.display = '';
@@ -586,6 +598,105 @@ function writeUserProfile(user) {
   }, { merge: true }).catch(err => console.warn('Profile write failed:', err));
 }
 
+let currentUserDocCache = null;
+
+async function loadUserDoc() {
+  if (!db || !currentUser) return null;
+  try {
+    const snap = await db.collection('users').doc(currentUser.uid).get();
+    currentUserDocCache = snap.exists ? snap.data() : null;
+  } catch (err) {
+    console.warn('Load user doc failed:', err);
+  }
+  return currentUserDocCache;
+}
+
+function applyUserChipName(data) {
+  const nameEl = document.getElementById('user-chip-name');
+  if (!nameEl || !currentUser) return;
+  const username = data && data.username;
+  nameEl.textContent = username || currentUser.displayName || currentUser.email || 'Signed in';
+}
+
+const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
+const USERNAME_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+function openUsernameDialog() {
+  if (!currentUser || currentUser.isAnonymous) return;
+  const overlay = document.getElementById('username-overlay');
+  const input = document.getElementById('username-input');
+  const error = document.getElementById('username-error');
+  input.value = (currentUserDocCache && currentUserDocCache.username) || '';
+  error.textContent = '';
+  overlay.style.display = '';
+  setTimeout(() => input.focus(), 50);
+}
+
+function closeUsernameDialog() {
+  document.getElementById('username-overlay').style.display = 'none';
+}
+
+async function saveUsername() {
+  const input = document.getElementById('username-input');
+  const error = document.getElementById('username-error');
+  const saveBtn = document.getElementById('username-save-btn');
+  const raw = (input.value || '').trim().toLowerCase();
+  error.textContent = '';
+
+  if (!USERNAME_RE.test(raw)) {
+    error.textContent = 'Usernames must be 3–20 chars: a–z, 0–9, _';
+    return;
+  }
+
+  const existing = currentUserDocCache || {};
+  if (existing.username === raw) {
+    closeUsernameDialog();
+    return;
+  }
+
+  if (existing.usernameUpdatedAt && typeof existing.usernameUpdatedAt.toMillis === 'function') {
+    const elapsed = Date.now() - existing.usernameUpdatedAt.toMillis();
+    if (elapsed < USERNAME_COOLDOWN_MS) {
+      const hoursLeft = Math.ceil((USERNAME_COOLDOWN_MS - elapsed) / 3600000);
+      error.textContent = `You can change your username again in about ${hoursLeft}h.`;
+      return;
+    }
+  }
+
+  saveBtn.disabled = true;
+  try {
+    const claimRef = db.collection('usernames').doc(raw);
+    const claimSnap = await claimRef.get();
+    if (claimSnap.exists && claimSnap.data().uid !== currentUser.uid) {
+      error.textContent = 'That username is taken.';
+      saveBtn.disabled = false;
+      return;
+    }
+
+    await claimRef.set({ uid: currentUser.uid });
+
+    if (existing.username && existing.username !== raw) {
+      await db.collection('usernames').doc(existing.username).delete().catch(() => {});
+    }
+
+    await db.collection('users').doc(currentUser.uid).set({
+      uid: currentUser.uid,
+      username: raw,
+      usernameUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    currentUserDocCache = { ...existing, username: raw, usernameUpdatedAt: { toMillis: () => Date.now() } };
+    applyUserChipName(currentUserDocCache);
+    closeUsernameDialog();
+  } catch (err) {
+    console.error('Save username failed:', err);
+    error.textContent = 'Could not save username. Please try again.';
+    saveBtn.disabled = false;
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
 function setActiveGameRoom(code) {
   if (!db || !currentUser || currentUser.isAnonymous) return;
   const value = code
@@ -612,14 +723,18 @@ async function checkCurrentGame() {
       return;
     }
     const data = gameDoc.data() || {};
-    if (!data.game || data.game.gameOver) {
+    if (data.game && data.game.gameOver) {
       setActiveGameRoom(null);
       return;
     }
     const myName = currentUser.displayName || '';
-    const opponent = data.game.players.find(p => p.name !== myName) || data.game.players[1] || {};
+    const opponent = (data.game && data.game.players)
+      ? (data.game.players.find(p => p.name !== myName) || data.game.players[1] || {})
+      : {};
     document.getElementById('current-game-opponent').textContent = opponent.name || 'Opponent';
-    document.getElementById('current-game-meta').textContent = `${data.game.startingScore} • Best of ${data.game.bestOfSets}`;
+    document.getElementById('current-game-meta').textContent = data.game
+      ? `${data.game.startingScore} • Best of ${data.game.bestOfSets}`
+      : 'Waiting for opponent';
     const avatar = document.getElementById('current-game-avatar');
     if (opponent.photoURL) {
       avatar.src = opponent.photoURL;
@@ -1663,6 +1778,15 @@ function init() {
   document.getElementById('sign-out-btn').addEventListener('click', () => {
     if (currentUser && currentUser.isAnonymous) signInWithGoogle();
     else signOut();
+  });
+
+  // Edit username
+  document.getElementById('user-chip-name').addEventListener('click', openUsernameDialog);
+  document.getElementById('username-cancel-btn').addEventListener('click', closeUsernameDialog);
+  document.getElementById('username-save-btn').addEventListener('click', saveUsername);
+  document.getElementById('username-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveUsername();
+    else if (e.key === 'Escape') closeUsernameDialog();
   });
 
   // Mode toggle (Local / Online)
