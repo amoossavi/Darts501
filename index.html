@@ -50,10 +50,8 @@
       <button id="sign-out-btn" class="btn btn-secondary btn-small">Sign out</button>
     </div>
     <h1 class="app-title">DARTS <span>501</span></h1>
-    <p class="app-subtitle">Double-out scoring</p>
 
-    <div class="setup-card" role="group" aria-labelledby="players-heading">
-      <h2 id="players-heading">Players</h2>
+    <div class="setup-card">
       <div class="input-group">
         <label for="player1-name">Player 1</label>
         <input type="text" id="player1-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
@@ -81,9 +79,7 @@
       <button id="start-btn" class="btn btn-primary">Start Game</button>
     </div>
 
-    <div class="setup-card" id="friends-card" role="group" aria-labelledby="friends-heading">
-      <h2 id="friends-heading">Friends</h2>
-
+    <div class="setup-card" id="friends-card" aria-label="Friends">
       <div class="friends-tabs" role="tablist" aria-label="Friends sections">
         <button class="friends-tab active" role="tab" id="tab-btn-friends" aria-selected="true" aria-controls="tab-panel-friends" data-tab="friends">Friends</button>
         <button class="friends-tab" role="tab" id="tab-btn-requests" aria-selected="false" aria-controls="tab-panel-requests" data-tab="requests">Requests<span class="tab-badge" id="badge-requests" hidden>0</span></button>
@@ -127,8 +123,7 @@
       </div>
     </div>
 
-    <div class="setup-card" role="group" aria-labelledby="theme-heading">
-      <h2 id="theme-heading">Theme</h2>
+    <div class="setup-card">
       <div class="theme-selector" id="theme-selector">
         <button class="theme-btn active" data-theme="default">
           <div class="theme-swatch">

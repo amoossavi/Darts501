@@ -522,6 +522,7 @@ function onAuthChanged(user) {
       if (name) name.textContent = 'Guest';
       if (signBtn) signBtn.textContent = 'Sign in';
       if (friendsCard) friendsCard.style.display = 'none';
+      stopHeartbeat();
       unsubscribeFriendships();
       unsubscribeChallenges();
     } else {
@@ -535,6 +536,7 @@ function onAuthChanged(user) {
       if (p1 && !p1.value.trim() && user.displayName) p1.value = user.displayName;
 
       writeUserProfile(user);
+      startHeartbeat();
       subscribeFriendships();
       subscribeChallenges();
     }
@@ -542,9 +544,31 @@ function onAuthChanged(user) {
     if (chip) chip.style.display = '';
     showScreen('setup-screen');
   } else {
+    stopHeartbeat();
     unsubscribeFriendships();
     unsubscribeChallenges();
     showScreen('login-screen');
+  }
+}
+
+const HEARTBEAT_INTERVAL_MS = 60000;
+const ONLINE_THRESHOLD_MS = 90000;
+let heartbeatInterval = null;
+
+function startHeartbeat() {
+  if (heartbeatInterval) return;
+  heartbeatInterval = setInterval(() => {
+    if (currentUser && !currentUser.isAnonymous) {
+      writeUserProfile(currentUser);
+      renderFriendships();
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
   }
 }
 
@@ -565,6 +589,8 @@ function writeUserProfile(user) {
 
 let friendshipsUnsub = null;
 let friendshipsCache = [];
+let friendPresenceUnsub = null;
+const friendPresence = {};
 
 function pairIdFor(a, b) {
   return [a, b].sort().join('_');
@@ -658,6 +684,7 @@ function subscribeFriendships() {
     .where('uids', 'array-contains', currentUser.uid)
     .onSnapshot(snap => {
       friendshipsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      updateFriendPresenceSubscription();
       renderFriendships();
     }, err => {
       console.error('Friendships listener error:', err);
@@ -669,8 +696,39 @@ function unsubscribeFriendships() {
     friendshipsUnsub();
     friendshipsUnsub = null;
   }
+  if (friendPresenceUnsub) {
+    friendPresenceUnsub();
+    friendPresenceUnsub = null;
+  }
+  for (const k of Object.keys(friendPresence)) delete friendPresence[k];
   friendshipsCache = [];
   renderFriendships();
+}
+
+function updateFriendPresenceSubscription() {
+  if (friendPresenceUnsub) { friendPresenceUnsub(); friendPresenceUnsub = null; }
+  if (!currentUser) return;
+  const friendUids = friendshipsCache
+    .filter(f => f.status === 'accepted')
+    .map(f => f.uids.find(u => u !== currentUser.uid))
+    .filter(Boolean)
+    .slice(0, 10);
+  if (friendUids.length === 0) return;
+  friendPresenceUnsub = db.collection('users')
+    .where('uid', 'in', friendUids)
+    .onSnapshot(snap => {
+      for (const doc of snap.docs) {
+        const d = doc.data();
+        if (d.uid) friendPresence[d.uid] = d.lastSeenAt || null;
+      }
+      renderFriendships();
+    }, err => console.error('Friend presence listener error:', err));
+}
+
+function isFriendOnline(uid) {
+  const ts = friendPresence[uid];
+  if (!ts || typeof ts.toMillis !== 'function') return false;
+  return (Date.now() - ts.toMillis()) < ONLINE_THRESHOLD_MS;
 }
 
 function renderFriendships() {
@@ -916,8 +974,8 @@ function friendRowHtml(f, myUid, kind) {
   const otherUid = f.uids.find(u => u !== myUid);
   const p = (f.profiles && f.profiles[otherUid]) || {};
   const name = escapeHtml(p.displayName || p.email || 'Unknown');
-  const email = escapeHtml(p.email || '');
   const photo = p.photoURL ? `<img class="friend-avatar" src="${escapeHtml(p.photoURL)}" alt="" referrerpolicy="no-referrer">` : '<div class="friend-avatar friend-avatar-placeholder"></div>';
+  const dot = (kind === 'accepted' && isFriendOnline(otherUid)) ? '<span class="presence-dot" title="Online" aria-label="Online"></span>' : '';
   let actions = '';
   if (kind === 'incoming') {
     actions = `
@@ -926,16 +984,13 @@ function friendRowHtml(f, myUid, kind) {
   } else if (kind === 'outgoing') {
     actions = `<button class="btn btn-secondary btn-small" data-friend-remove="${escapeHtml(f.id)}">Cancel</button>`;
   } else {
-    actions = `
-      <button class="btn btn-primary btn-small" data-friend-challenge="${escapeHtml(f.id)}">Challenge</button>
-      <button class="btn btn-secondary btn-small" data-friend-remove="${escapeHtml(f.id)}">Remove</button>`;
+    actions = `<button class="btn btn-primary btn-small" data-friend-challenge="${escapeHtml(f.id)}">Challenge</button>`;
   }
   return `
     <div class="friend-row">
-      ${photo}
+      <div class="friend-avatar-wrap">${photo}${dot}</div>
       <div class="friend-info">
         <div class="friend-name">${name}</div>
-        <div class="friend-email">${email}</div>
       </div>
       <div class="friend-actions">${actions}</div>
     </div>`;
