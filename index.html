@@ -51,7 +51,12 @@
     </div>
     <h1 class="app-title">DARTS <span>501</span></h1>
 
-    <div class="setup-card">
+    <div class="mode-toggle" role="tablist" aria-label="Match type">
+      <button class="mode-toggle-btn active" role="tab" aria-selected="true" data-mode="local">Local</button>
+      <button class="mode-toggle-btn" role="tab" aria-selected="false" data-mode="online">Online</button>
+    </div>
+
+    <div class="setup-card" id="local-play-card">
       <div class="input-group">
         <label for="player1-name">Player 1</label>
         <input type="text" id="player1-name" placeholder="Enter name..." maxlength="20" autocomplete="off">
@@ -79,7 +84,7 @@
       <button id="start-btn" class="btn btn-primary">Start Game</button>
     </div>
 
-    <div class="setup-card" id="friends-card" aria-label="Friends">
+    <div class="setup-card" id="friends-card" aria-label="Friends" hidden>
       <div class="friends-tabs" role="tablist" aria-label="Friends sections">
         <button class="friends-tab active" role="tab" id="tab-btn-friends" aria-selected="true" aria-controls="tab-panel-friends" data-tab="friends">Friends</button>
         <button class="friends-tab" role="tab" id="tab-btn-requests" aria-selected="false" aria-controls="tab-panel-requests" data-tab="requests">Requests<span class="tab-badge" id="badge-requests" hidden>0</span></button>

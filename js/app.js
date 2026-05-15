@@ -517,11 +517,13 @@ function onAuthChanged(user) {
     const signBtn = document.getElementById('sign-out-btn');
     const friendsCard = document.getElementById('friends-card');
 
+    const onlineToggle = document.querySelector('.mode-toggle-btn[data-mode="online"]');
     if (user.isAnonymous) {
       if (avatar) avatar.style.display = 'none';
       if (name) name.textContent = 'Guest';
       if (signBtn) signBtn.textContent = 'Sign in';
-      if (friendsCard) friendsCard.style.display = 'none';
+      if (onlineToggle) onlineToggle.hidden = true;
+      switchMode('local');
       stopHeartbeat();
       unsubscribeFriendships();
       unsubscribeChallenges();
@@ -530,7 +532,7 @@ function onAuthChanged(user) {
       else if (avatar) { avatar.style.display = 'none'; }
       if (name) name.textContent = user.displayName || user.email || 'Signed in';
       if (signBtn) signBtn.textContent = 'Sign out';
-      if (friendsCard) friendsCard.style.display = '';
+      if (onlineToggle) onlineToggle.hidden = false;
 
       const p1 = document.getElementById('player1-name');
       if (p1 && !p1.value.trim() && user.displayName) p1.value = user.displayName;
@@ -932,6 +934,16 @@ function updateTabBadge(tab, count) {
   } else {
     badge.hidden = true;
   }
+}
+
+function switchMode(mode) {
+  document.querySelectorAll('.mode-toggle-btn').forEach(btn => {
+    const active = btn.dataset.mode === mode;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  document.getElementById('local-play-card').hidden = mode !== 'local';
+  document.getElementById('friends-card').hidden = mode !== 'online';
 }
 
 function switchFriendsTab(tab) {
@@ -1586,6 +1598,11 @@ function init() {
   document.getElementById('sign-out-btn').addEventListener('click', () => {
     if (currentUser && currentUser.isAnonymous) signInWithGoogle();
     else signOut();
+  });
+
+  // Mode toggle (Local / Online)
+  document.querySelectorAll('.mode-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchMode(btn.dataset.mode));
   });
 
   // Friends card tabs
