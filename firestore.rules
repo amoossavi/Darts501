@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // User profile directory. Any signed-in user can read profiles so
+    // the "add friend by email" lookup works. Each user can only write
+    // their own profile doc.
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, update: if isSelf(uid)
+        && request.resource.data.uid == uid;
+      allow delete: if false;
+    }
+
+    // Friendship docs are keyed by sorted-uid pair, e.g. "abc_xyz".
+    // Both participants can read; either can create a pending request
+    // they originate; either can update status to accepted; either can
+    // delete to remove/decline/cancel.
+    match /friendships/{pairId} {
+      function inPair() {
+        return signedIn() && request.auth.uid in resource.data.uids;
+      }
+      function inNewPair() {
+        return signedIn() && request.auth.uid in request.resource.data.uids;
+      }
+
+      allow read: if signedIn()
+        && (resource == null || request.auth.uid in resource.data.uids);
+      allow create: if inNewPair()
+        && request.resource.data.requester == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.uids.size() == 2;
+      allow update: if inPair()
+        && request.resource.data.uids == resource.data.uids
+        && request.resource.data.requester == resource.data.requester;
+      allow delete: if inPair();
+    }
+
+    // Challenges link two friends to a hosted room. Participants can
+    // read; the sender creates; either side can update status (accept,
+    // decline, cancel) or delete to clean up.
+    match /challenges/{challengeId} {
+      function isParticipant() {
+        return signedIn() && request.auth.uid in resource.data.participants;
+      }
+      function isNewParticipant() {
+        return signedIn() && request.auth.uid in request.resource.data.participants;
+      }
+
+      allow read: if signedIn()
+        && (resource == null || request.auth.uid in resource.data.participants);
+      allow create: if isNewParticipant()
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.participants.size() == 2
+        && request.resource.data.status == 'pending';
+      allow update: if isParticipant()
+        && request.resource.data.participants == resource.data.participants
+        && request.resource.data.from == resource.data.from
+        && request.resource.data.to == resource.data.to;
+      allow delete: if isParticipant();
+    }
+
+    // Game rooms are accessed by short room code. Signed-in users
+    // (including anonymous guests) can read/write so host + joiner can
+    // sync state. Rooms self-expire client-side after 4 hours.
+    match /games/{roomCode} {
+      allow read, write: if signedIn();
+    }
+  }
+}
