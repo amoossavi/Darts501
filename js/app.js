@@ -545,11 +545,10 @@ function onAuthChanged(user) {
       const p1 = document.getElementById('player1-name');
       if (p1 && !p1.value.trim() && user.displayName) p1.value = user.displayName;
 
-      writeUserProfile(user);
       startHeartbeat();
       subscribeFriendships();
       subscribeChallenges();
-      loadUserDoc().then(data => {
+      writeUserProfile(user).then(loadUserDoc).then(data => {
         applyUserChipName(data);
         if (data && data.theme) applyTheme(data.theme, false);
         checkCurrentGame();
@@ -588,8 +587,8 @@ function stopHeartbeat() {
 }
 
 function writeUserProfile(user) {
-  if (!db || !user) return;
-  db.collection('users').doc(user.uid).set({
+  if (!db || !user) return Promise.resolve();
+  return db.collection('users').doc(user.uid).set({
     uid: user.uid,
     displayName: user.displayName || '',
     email: (user.email || '').toLowerCase(),
