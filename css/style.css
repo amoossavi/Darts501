@@ -270,6 +270,67 @@ button:focus-visible {
   display: none;
 }
 
+.current-game-card {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset, 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.current-game-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent);
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.current-game-body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.current-game-avatar {
+  width: 56px !important;
+  height: 56px !important;
+  margin-bottom: 0;
+  border-width: 2px;
+}
+
+.current-game-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.current-game-vs {
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.current-game-vs strong {
+  font-weight: 700;
+}
+
+.current-game-meta {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.current-game-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.current-game-actions .btn {
+  flex: 1;
+  width: auto;
+  margin-top: 0;
+  padding: 12px 16px;
+  font-size: 0.95rem;
+}
+
 .mode-toggle {
   display: flex;
   gap: 4px;
@@ -600,6 +661,27 @@ button:focus-visible {
   transition: border-color 0.3s, box-shadow 0.3s;
   display: flex;
   flex-direction: column;
+  align-items: center;
+}
+
+.player-panel-avatar {
+  width: clamp(64px, 12vw, 120px);
+  height: clamp(64px, 12vw, 120px);
+  border-radius: 50%;
+  object-fit: cover;
+  margin-bottom: 10px;
+  border: 3px solid var(--border);
+  background: var(--input-bg);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.active-player .player-panel-avatar {
+  border-color: var(--green);
+  box-shadow: 0 0 16px var(--green-glow);
+}
+
+.player-panel-avatar[hidden] {
+  display: none;
 }
 
 .player-panel.active-player {

@@ -51,6 +51,21 @@
     </div>
     <h1 class="app-title">DARTS <span>501</span></h1>
 
+    <div class="setup-card current-game-card" id="current-game-card" hidden>
+      <div class="current-game-label">Current Game</div>
+      <div class="current-game-body">
+        <img id="current-game-avatar" class="player-panel-avatar current-game-avatar" alt="" referrerpolicy="no-referrer" hidden>
+        <div class="current-game-info">
+          <div class="current-game-vs">vs. <strong id="current-game-opponent"></strong></div>
+          <div class="current-game-meta" id="current-game-meta"></div>
+        </div>
+      </div>
+      <div class="current-game-actions">
+        <button id="resume-game-btn" class="btn btn-primary">Resume</button>
+        <button id="abandon-game-btn" class="btn btn-secondary">Abandon</button>
+      </div>
+    </div>
+
     <div class="mode-toggle" role="tablist" aria-label="Match type">
       <button class="mode-toggle-btn" role="tab" aria-selected="false" data-mode="local">Local</button>
       <button class="mode-toggle-btn active" role="tab" aria-selected="true" data-mode="online">Online</button>
@@ -243,6 +258,7 @@
     <div class="game-layout">
       <!-- Player 1 -->
       <div id="player1-panel" class="player-panel" role="region" aria-label="Player 1">
+        <img id="p1-avatar" class="player-panel-avatar" alt="" referrerpolicy="no-referrer" hidden>
         <div class="player-name" id="p1-name"></div>
         <div class="player-legs-sets">
           <span>Sets: <strong id="p1-sets">0</strong></span>
@@ -278,6 +294,7 @@
 
       <!-- Player 2 -->
       <div id="player2-panel" class="player-panel" role="region" aria-label="Player 2">
+        <img id="p2-avatar" class="player-panel-avatar" alt="" referrerpolicy="no-referrer" hidden>
         <div class="player-name" id="p2-name"></div>
         <div class="player-legs-sets">
           <span>Sets: <strong id="p2-sets">0</strong></span>

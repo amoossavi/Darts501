@@ -541,6 +541,7 @@ function onAuthChanged(user) {
       startHeartbeat();
       subscribeFriendships();
       subscribeChallenges();
+      checkCurrentGame();
     }
 
     if (chip) chip.style.display = '';
@@ -583,6 +584,54 @@ function writeUserProfile(user) {
     photoURL: user.photoURL || '',
     lastSeenAt: firebase.firestore.FieldValue.serverTimestamp()
   }, { merge: true }).catch(err => console.warn('Profile write failed:', err));
+}
+
+function setActiveGameRoom(code) {
+  if (!db || !currentUser || currentUser.isAnonymous) return;
+  const value = code
+    ? code
+    : firebase.firestore.FieldValue.delete();
+  db.collection('users').doc(currentUser.uid).set({
+    uid: currentUser.uid,
+    activeGameRoomCode: value
+  }, { merge: true }).catch(err => console.warn('activeGameRoom write failed:', err));
+}
+
+async function checkCurrentGame() {
+  const card = document.getElementById('current-game-card');
+  if (!card) return;
+  card.hidden = true;
+  if (!db || !currentUser || currentUser.isAnonymous) return;
+  try {
+    const userDoc = await db.collection('users').doc(currentUser.uid).get();
+    const code = userDoc.exists && userDoc.data().activeGameRoomCode;
+    if (!code) return;
+    const gameDoc = await db.collection('games').doc(code).get();
+    if (!gameDoc.exists) {
+      setActiveGameRoom(null);
+      return;
+    }
+    const data = gameDoc.data() || {};
+    if (!data.game || data.game.gameOver) {
+      setActiveGameRoom(null);
+      return;
+    }
+    const myName = currentUser.displayName || '';
+    const opponent = data.game.players.find(p => p.name !== myName) || data.game.players[1] || {};
+    document.getElementById('current-game-opponent').textContent = opponent.name || 'Opponent';
+    document.getElementById('current-game-meta').textContent = `${data.game.startingScore} • Best of ${data.game.bestOfSets}`;
+    const avatar = document.getElementById('current-game-avatar');
+    if (opponent.photoURL) {
+      avatar.src = opponent.photoURL;
+      avatar.hidden = false;
+    } else {
+      avatar.hidden = true;
+    }
+    card.dataset.roomCode = code;
+    card.hidden = false;
+  } catch (err) {
+    console.warn('Current-game check failed:', err);
+  }
 }
 
 // ============================================================
@@ -854,9 +903,11 @@ function watchActiveChallenge(ref) {
     if (c.status === 'accepted') {
       const myName = currentUser.displayName || 'Player 1';
       const theirName = (c.toProfile && c.toProfile.displayName) || 'Player 2';
+      const myPhoto = currentUser.photoURL || '';
+      const theirPhoto = (c.toProfile && c.toProfile.photoURL) || '';
       detachActiveChallenge();
       ref.delete().catch(() => {});
-      startGame(myName, theirName, c.bestOfSets, c.startingScore);
+      startGame(myName, theirName, c.bestOfSets, c.startingScore, myPhoto, theirPhoto);
     } else if (c.status === 'declined' || c.status === 'cancelled') {
       const who = (c.toProfile && c.toProfile.displayName) || 'Friend';
       showMessage(`${who} declined`);
@@ -878,6 +929,7 @@ async function acceptChallenge(challengeId) {
     if (c.to !== currentUser.uid || c.status !== 'pending') return;
     await ref.update({ status: 'accepted' });
     await joinRoom(c.roomCode);
+    setActiveGameRoom(c.roomCode);
   } catch (err) {
     console.error('Accept challenge failed:', err);
     showMessage('Could not accept challenge');
@@ -1055,6 +1107,7 @@ async function hostGame() {
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     isOnline = true;
+    setActiveGameRoom(roomCode);
   } catch (err) {
     showMessage('Failed to create room');
     isHost = false;
@@ -1138,6 +1191,7 @@ function subscribeToGame() {
     }
 
     if (game.gameOver) {
+      setActiveGameRoom(null);
       showRoomCodeOnGameScreen();
       showGameOver();
     } else {
@@ -1209,9 +1263,10 @@ function leaveRoom() {
 // Game state
 let game = null;
 
-function createPlayer(name, startingScore) {
+function createPlayer(name, startingScore, photoURL) {
   return {
     name: name,
+    photoURL: photoURL || '',
     score: startingScore,
     darts: 0,
     visits: [],
@@ -1223,10 +1278,10 @@ function createPlayer(name, startingScore) {
   };
 }
 
-function startGame(name1, name2, bestOfSets, startingScore) {
+function startGame(name1, name2, bestOfSets, startingScore, photoURL1, photoURL2) {
   const score = startingScore || 501;
   game = {
-    players: [createPlayer(name1, score), createPlayer(name2, score)],
+    players: [createPlayer(name1, score, photoURL1), createPlayer(name2, score, photoURL2)],
     currentPlayer: 0,
     legStartingPlayer: 0,
     bestOfSets: bestOfSets || 1,
@@ -1379,6 +1434,7 @@ function processCheckout(dartsUsed) {
       game.winner = parseInt(overlay.dataset.playerIndex);
       fireEvent({ id: Date.now(), type: 'matchWon', playerName: player.name });
       syncGameToFirestore();
+      setActiveGameRoom(null);
       showGameOver();
       return;
     }
@@ -1494,6 +1550,14 @@ function render() {
     const panel = document.getElementById(`player${idx}-panel`);
 
     panel.classList.toggle('active-player', game.currentPlayer === i);
+
+    const avatar = document.getElementById(`p${idx}-avatar`);
+    if (p.photoURL) {
+      if (avatar.src !== p.photoURL) avatar.src = p.photoURL;
+      avatar.hidden = false;
+    } else {
+      avatar.hidden = true;
+    }
 
     document.getElementById(`p${idx}-name`).textContent = p.name;
     document.getElementById(`p${idx}-sets`).textContent = p.sets;
@@ -1726,12 +1790,28 @@ function init() {
   // Rematch button
   document.getElementById('rematch-btn').addEventListener('click', () => {
     if (game) {
-      startGame(game.players[0].name, game.players[1].name, game.bestOfSets, game.startingScore);
+      startGame(game.players[0].name, game.players[1].name, game.bestOfSets, game.startingScore, game.players[0].photoURL, game.players[1].photoURL);
     }
   });
 
-  // Leave-room button (waiting overlay)
-  document.getElementById('leave-room-btn').addEventListener('click', leaveRoom);
+  // Leave-room button (waiting overlay) — explicit leave clears the resume pointer
+  document.getElementById('leave-room-btn').addEventListener('click', () => {
+    setActiveGameRoom(null);
+    leaveRoom();
+  });
+
+  // Current-game card: Resume / Abandon
+  document.getElementById('resume-game-btn').addEventListener('click', () => {
+    const code = document.getElementById('current-game-card').dataset.roomCode;
+    if (code) joinRoom(code);
+  });
+  document.getElementById('abandon-game-btn').addEventListener('click', () => {
+    const card = document.getElementById('current-game-card');
+    const code = card.dataset.roomCode;
+    if (code && db) db.collection('games').doc(code).delete().catch(() => {});
+    setActiveGameRoom(null);
+    card.hidden = true;
+  });
 
   // Checkout darts buttons
   document.querySelectorAll('.checkout-darts-btn').forEach(btn => {
@@ -1746,14 +1826,9 @@ function init() {
   preloadVoiceClips();
 }
 
-// Clean up Firestore room if host closes/reloads the page
+// Pending challenges are transient — drop them on unload. The active game,
+// if any, is preserved on Firestore so the user can resume from the home screen.
 window.addEventListener('beforeunload', () => {
-  if (isHost && roomCode && db) {
-    // Use a synchronous-ish approach for cleanup on page unload
-    const docRef = db.collection('games').doc(roomCode);
-    // navigator.sendBeacon is not available for Firestore, so we do a fire-and-forget delete
-    docRef.delete().catch(() => {});
-  }
   if (activeChallengeId && db) {
     db.collection('challenges').doc(activeChallengeId).delete().catch(() => {});
   }
