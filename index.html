@@ -407,27 +407,52 @@
     </div>
 
     <div class="stats-body" id="stats-body">
-      <div class="stats-headline" id="stats-headline"></div>
+      <div class="friends-tabs stats-tabs" role="tablist" aria-label="Stats sections">
+        <button class="friends-tab active" role="tab" aria-selected="true" data-stats-tab="overview">Overview</button>
+        <button class="friends-tab" role="tab" aria-selected="false" data-stats-tab="records">Records</button>
+        <button class="friends-tab" role="tab" aria-selected="false" data-stats-tab="h2h">H2H</button>
+        <button class="friends-tab" role="tab" aria-selected="false" data-stats-tab="matches">Matches</button>
+      </div>
 
-      <div class="setup-card stats-card">
-        <h3 class="stats-section-title">3-dart average trend</h3>
-        <div id="stats-chart-wrap" class="stats-chart-wrap"></div>
-        <div class="stats-chart-legend">
-          <span class="legend-dot legend-avg"></span> 3-dart avg per match
-          <span class="legend-dot legend-mean"></span> Lifetime avg
+      <div class="stats-tab-panel active" data-stats-panel="overview">
+        <div class="stats-headline" id="stats-headline"></div>
+        <div class="setup-card stats-card stats-chart-card">
+          <h3 class="stats-section-title">3-dart average trend</h3>
+          <div id="stats-chart-wrap" class="stats-chart-wrap"></div>
+          <div class="stats-chart-legend">
+            <span class="legend-dot legend-avg"></span> 3-dart avg per match
+            <span class="legend-dot legend-mean"></span> Lifetime avg
+          </div>
         </div>
       </div>
 
-      <div class="setup-card stats-card">
-        <h3 class="stats-section-title">Records</h3>
-        <div class="stats-grid" id="stats-records"></div>
+      <div class="stats-tab-panel" data-stats-panel="records" hidden>
+        <div class="setup-card stats-card">
+          <div class="stats-grid" id="stats-records"></div>
+        </div>
       </div>
 
-      <div class="setup-card stats-card">
-        <h3 class="stats-section-title">Head-to-head</h3>
-        <div id="stats-h2h" class="stats-h2h"></div>
+      <div class="stats-tab-panel" data-stats-panel="h2h" hidden>
+        <div class="setup-card stats-card stats-scroll-card">
+          <div id="stats-h2h" class="stats-h2h"></div>
+        </div>
+      </div>
+
+      <div class="stats-tab-panel" data-stats-panel="matches" hidden>
+        <div class="setup-card stats-card stats-scroll-card">
+          <div id="stats-matches" class="stats-matches"></div>
+        </div>
       </div>
     </div>
+  </div>
+
+  <!-- ==================== Match Detail Screen ==================== -->
+  <div id="match-detail-screen" class="screen">
+    <div class="stats-header">
+      <h2 id="match-detail-title">Match</h2>
+      <button id="match-detail-back-btn" class="btn btn-secondary btn-small">Back</button>
+    </div>
+    <div id="match-detail-body"></div>
   </div>
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>

@@ -862,6 +862,19 @@ async function persistFinishedMatch() {
 // Stats screen
 // ============================================================
 
+let statsMatchesCache = [];
+
+function switchStatsTab(tab) {
+  document.querySelectorAll('[data-stats-tab]').forEach(btn => {
+    const active = btn.dataset.statsTab === tab;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-stats-panel]').forEach(panel => {
+    panel.hidden = panel.dataset.statsPanel !== tab;
+  });
+}
+
 async function openStatsScreen() {
   if (!currentUser || currentUser.isAnonymous) return;
   showScreen('stats-screen');
@@ -875,7 +888,8 @@ async function openStatsScreen() {
       db.collection('matches').where('participants', 'array-contains', currentUser.uid).get()
     ]);
     const stats = statsSnap.exists ? statsSnap.data() : null;
-    const matches = matchesSnap.docs.map(d => d.data()).sort((a, b) => (a.endedAt || 0) - (b.endedAt || 0));
+    const matches = matchesSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.endedAt || 0) - (b.endedAt || 0));
+    statsMatchesCache = matches;
     if (!stats || !stats.matchesPlayed) {
       body.hidden = true;
       empty.hidden = false;
@@ -885,9 +899,148 @@ async function openStatsScreen() {
     renderRecords(stats);
     renderHeadToHead(matches);
     renderAverageChart(matches, stats);
+    renderMatchesList(matches);
   } catch (err) {
     console.warn('Stats load failed:', err);
   }
+}
+
+function formatMatchDate(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (sameDay) return `Today ${time}`;
+  if (isYesterday) return `Yesterday ${time}`;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + time;
+}
+
+function renderMatchesList(matches) {
+  const container = document.getElementById('stats-matches');
+  if (!matches.length) {
+    container.innerHTML = '<div class="friends-empty">No matches yet.</div>';
+    return;
+  }
+  const me = currentUser.uid;
+  const recent = matches.slice().reverse();
+  container.innerHTML = recent.map(m => {
+    const myIdx = m.players.findIndex(p => p.uid === me);
+    if (myIdx < 0) return '';
+    const oppIdx = myIdx === 0 ? 1 : 0;
+    const opp = m.players[oppIdx] || {};
+    const won = m.winnerIndex === myIdx;
+    const photo = opp.photoURL
+      ? `<img class="friend-avatar" src="${escapeHtml(opp.photoURL)}" alt="" referrerpolicy="no-referrer">`
+      : '<div class="friend-avatar friend-avatar-placeholder"></div>';
+    const mySets = m.players[myIdx].sets;
+    const oppSets = opp.sets || 0;
+    return `
+      <button class="match-row" data-match-id="${escapeHtml(m.id)}">
+        <div class="friend-avatar-wrap">${photo}</div>
+        <div class="match-row-info">
+          <div class="match-row-opponent">vs. ${escapeHtml(opp.name || 'Unknown')}</div>
+          <div class="match-row-date">${escapeHtml(formatMatchDate(m.endedAt))}</div>
+        </div>
+        <div class="match-row-score">${mySets}–${oppSets}</div>
+        <span class="match-row-result ${won ? 'win' : 'loss'}">${won ? 'W' : 'L'}</span>
+      </button>`;
+  }).join('');
+}
+
+function openMatchDetail(matchId) {
+  const m = statsMatchesCache.find(x => x.id === matchId);
+  if (!m) return;
+  const me = currentUser.uid;
+  const myIdx = m.players.findIndex(p => p.uid === me);
+  if (myIdx < 0) return;
+  const oppIdx = myIdx === 0 ? 1 : 0;
+  const opp = m.players[oppIdx] || {};
+  const won = m.winnerIndex === myIdx;
+
+  document.getElementById('match-detail-title').textContent = `vs. ${opp.name || 'Unknown'}`;
+
+  function playerStatsBlock(p, isMe) {
+    const visits = p.matchVisits || [];
+    const valid = visits.filter(v => !v.busted);
+    const total = valid.reduce((s, v) => s + v.score, 0);
+    const avg = p.matchDarts ? (total / p.matchDarts) * 3 : 0;
+    const highest = valid.reduce((mx, v) => Math.max(mx, v.score), 0);
+    const c180 = valid.filter(v => v.score === 180).length;
+    const c140 = valid.filter(v => v.score >= 140 && v.score < 180).length;
+    const c100 = valid.filter(v => v.score >= 100 && v.score < 140).length;
+    const checkoutPct = p.shotsAtCheckout ? (p.checkouts.length / p.shotsAtCheckout) * 100 : 0;
+    const highestCheckout = (p.checkouts || []).reduce((mx, c) => Math.max(mx, c), 0);
+    const photo = p.photoURL
+      ? `<img src="${escapeHtml(p.photoURL)}" alt="" referrerpolicy="no-referrer">`
+      : '<div class="friend-avatar-placeholder"></div>';
+    return `
+      <div class="stats-tile">
+        <h4>${photo}<span>${escapeHtml(p.name || 'Player')}${isMe ? ' (you)' : ''}</span></h4>
+        <div class="mps-row"><span class="mps-label">3-dart avg</span><span class="mps-value">${avg.toFixed(1)}</span></div>
+        <div class="mps-row"><span class="mps-label">Sets / darts</span><span class="mps-value">${p.sets} · ${p.matchDarts}</span></div>
+        <div class="mps-row"><span class="mps-label">Highest visit</span><span class="mps-value">${highest || '—'}</span></div>
+        <div class="mps-row"><span class="mps-label">180 / 140+ / 100+</span><span class="mps-value">${c180} · ${c140} · ${c100}</span></div>
+        <div class="mps-row"><span class="mps-label">Checkouts</span><span class="mps-value">${p.checkouts.length}/${p.shotsAtCheckout || 0} · ${checkoutPct.toFixed(0)}%</span></div>
+        <div class="mps-row"><span class="mps-label">Best checkout</span><span class="mps-value">${highestCheckout || '—'}</span></div>
+      </div>`;
+  }
+
+  function legBlock(leg, i) {
+    const winnerName = m.players[leg.winner] ? m.players[leg.winner].name : 'Player';
+    const totalDarts = (leg.darts && leg.darts[leg.winner]) || 0;
+    const visitsFor = idx => (leg.visits && leg.visits[idx]) || [];
+    function renderVisits(idx, isCheckoutPlayer) {
+      const arr = visitsFor(idx);
+      const last = arr.length - 1;
+      const chips = arr.map((v, j) => {
+        let cls = 'leg-visit-chip';
+        if (v.busted) cls += ' bust';
+        if (isCheckoutPlayer && j === last && !v.busted && leg.winner === idx) cls += ' checkout';
+        return `<span class="${cls}">${v.score}</span>`;
+      }).join('');
+      return `<div class="leg-visit-row">
+        <span class="leg-visit-name">${escapeHtml(m.players[idx].name)}</span>${chips}
+      </div>`;
+    }
+    return `
+      <div class="leg-detail">
+        <div class="leg-detail-header">
+          <span class="leg-detail-title">Leg ${i + 1}</span>
+          <span class="leg-detail-meta">Won by ${escapeHtml(winnerName)} · ${totalDarts} darts · checkout ${leg.checkout ? leg.checkout.value : '—'}</span>
+        </div>
+        <div class="leg-detail-visits">
+          ${renderVisits(0, true)}
+          ${renderVisits(1, true)}
+        </div>
+      </div>`;
+  }
+
+  const oppPhoto = opp.photoURL
+    ? `<img class="friend-avatar" src="${escapeHtml(opp.photoURL)}" alt="" referrerpolicy="no-referrer">`
+    : '<div class="friend-avatar friend-avatar-placeholder"></div>';
+
+  document.getElementById('match-detail-body').innerHTML = `
+    <div class="match-detail-summary">
+      <div class="match-detail-vs">
+        <div class="friend-avatar-wrap">${oppPhoto}</div>
+        <div>
+          <div class="match-detail-vs-text">vs. <strong>${escapeHtml(opp.name || 'Unknown')}</strong></div>
+          <div class="match-detail-vs-meta">${formatMatchDate(m.endedAt)} · ${m.startingScore} · Best of ${m.bestOfSets}</div>
+        </div>
+      </div>
+      <span class="match-detail-result ${won ? 'win' : 'loss'}">${won ? 'Won' : 'Lost'}</span>
+    </div>
+    <div class="match-player-stats">
+      ${playerStatsBlock(m.players[myIdx], true)}
+      ${playerStatsBlock(m.players[oppIdx], false)}
+    </div>
+    ${(m.legs || []).map(legBlock).join('')}
+  `;
+
+  showScreen('match-detail-screen');
 }
 
 function fmt(value, decimals) {
@@ -2132,6 +2285,16 @@ function init() {
 
   document.getElementById('stats-link-btn').addEventListener('click', openStatsScreen);
   document.getElementById('stats-back-btn').addEventListener('click', () => showScreen('setup-screen'));
+  document.getElementById('match-detail-back-btn').addEventListener('click', () => showScreen('stats-screen'));
+
+  document.querySelectorAll('[data-stats-tab]').forEach(btn => {
+    btn.addEventListener('click', () => switchStatsTab(btn.dataset.statsTab));
+  });
+
+  document.getElementById('stats-matches').addEventListener('click', (e) => {
+    const row = e.target.closest('.match-row');
+    if (row) openMatchDetail(row.dataset.matchId);
+  });
 
   // Edit username
   document.getElementById('user-chip-name').addEventListener('click', openUsernameDialog);
