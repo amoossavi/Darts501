@@ -716,9 +716,12 @@ async function checkCurrentGame() {
   try {
     const userDoc = await db.collection('users').doc(currentUser.uid).get({ source: 'server' });
     const userData = userDoc.data();
+    console.log('[cg] user doc fromCache=', userDoc.metadata.fromCache, 'data=', JSON.stringify(userData));
     const code = userDoc.exists && userData && userData.activeGameRoomCode;
+    console.log('[cg] code=', code);
     if (!code) return;
     const gameDoc = await db.collection('games').doc(code).get({ source: 'server' });
+    console.log('[cg] gameDoc exists=', gameDoc.exists);
     if (!gameDoc.exists) {
       setActiveGameRoom(null);
       return;
