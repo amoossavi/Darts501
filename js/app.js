@@ -492,22 +492,6 @@ async function signInWithGoogle() {
   }
 }
 
-async function signInAsGuest() {
-  if (!firebaseAvailable) return;
-  const errEl = document.getElementById('login-error');
-  if (errEl) errEl.textContent = '';
-  try {
-    await auth.signInAnonymously();
-  } catch (err) {
-    console.error('Guest sign-in failed:', err);
-    if (errEl) {
-      errEl.textContent = err.code === 'auth/operation-not-allowed'
-        ? 'Guest sign-in is not enabled.'
-        : 'Could not continue as guest.';
-    }
-  }
-}
-
 async function signOut() {
   if (!firebaseAvailable) return;
   try {
@@ -2266,9 +2250,68 @@ function escapeHtml(str) {
 // Event Handlers
 // ============================================================
 
+function buildDartboardBackground() {
+  const el = document.getElementById('login-bg');
+  if (!el) return;
+  const cx = 200, cy = 200;
+  const rInBull = 7, rOutBull = 18;
+  const rTrebleIn = 100, rTrebleOut = 108;
+  const rDoubleIn = 168, rDoubleOut = 176;
+  const rBoard = 190;
+  const cream = '#e6cf99';
+  const black = '#1a1a1a';
+  const red = '#c53030';
+  const green = '#1f7a4d';
+  const bullRed = '#d62828';
+  const bullGreen = '#239669';
+  const wire = '#bfb59a';
+
+  function annular(a1Deg, a2Deg, rIn, rOut) {
+    const a1 = (a1Deg - 90) * Math.PI / 180;
+    const a2 = (a2Deg - 90) * Math.PI / 180;
+    const x1o = (cx + rOut * Math.cos(a1)).toFixed(2);
+    const y1o = (cy + rOut * Math.sin(a1)).toFixed(2);
+    const x2o = (cx + rOut * Math.cos(a2)).toFixed(2);
+    const y2o = (cy + rOut * Math.sin(a2)).toFixed(2);
+    const x1i = (cx + rIn * Math.cos(a1)).toFixed(2);
+    const y1i = (cy + rIn * Math.sin(a1)).toFixed(2);
+    const x2i = (cx + rIn * Math.cos(a2)).toFixed(2);
+    const y2i = (cy + rIn * Math.sin(a2)).toFixed(2);
+    return `M${x1o},${y1o} A${rOut},${rOut} 0 0 1 ${x2o},${y2o} L${x2i},${y2i} A${rIn},${rIn} 0 0 0 ${x1i},${y1i} Z`;
+  }
+
+  const parts = [];
+  parts.push(`<circle cx="${cx}" cy="${cy}" r="${rBoard}" fill="${black}"/>`);
+  for (let i = 0; i < 20; i++) {
+    const a1 = -9 + i * 18;
+    const a2 = a1 + 18;
+    const even = i % 2 === 0;
+    const singleFill = even ? black : cream;
+    const ringFill = even ? red : green;
+    parts.push(`<path d="${annular(a1, a2, rOutBull, rTrebleIn)}" fill="${singleFill}"/>`);
+    parts.push(`<path d="${annular(a1, a2, rTrebleIn, rTrebleOut)}" fill="${ringFill}"/>`);
+    parts.push(`<path d="${annular(a1, a2, rTrebleOut, rDoubleIn)}" fill="${singleFill}"/>`);
+    parts.push(`<path d="${annular(a1, a2, rDoubleIn, rDoubleOut)}" fill="${ringFill}"/>`);
+  }
+  parts.push(`<circle cx="${cx}" cy="${cy}" r="${rOutBull}" fill="${bullGreen}"/>`);
+  parts.push(`<circle cx="${cx}" cy="${cy}" r="${rInBull}" fill="${bullRed}"/>`);
+  // Wire lines between sectors for visual definition
+  for (let i = 0; i < 20; i++) {
+    const a = ((-9 + i * 18) - 90) * Math.PI / 180;
+    const x1 = (cx + rOutBull * Math.cos(a)).toFixed(2);
+    const y1 = (cy + rOutBull * Math.sin(a)).toFixed(2);
+    const x2 = (cx + rDoubleOut * Math.cos(a)).toFixed(2);
+    const y2 = (cy + rDoubleOut * Math.sin(a)).toFixed(2);
+    parts.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${wire}" stroke-width="0.6" opacity="0.5"/>`);
+  }
+
+  el.innerHTML = `<svg class="login-bg-board" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice">${parts.join('')}</svg>`;
+}
+
 function init() {
   initTheme();
   initFirebase();
+  buildDartboardBackground();
 
   // Auth gates the app — login screen until signed in, setup screen after.
   if (firebaseAvailable) {
@@ -2277,11 +2320,7 @@ function init() {
     showScreen('login-screen');
   }
   document.getElementById('google-signin-btn').addEventListener('click', signInWithGoogle);
-  document.getElementById('guest-signin-btn').addEventListener('click', signInAsGuest);
-  document.getElementById('sign-out-btn').addEventListener('click', () => {
-    if (currentUser && currentUser.isAnonymous) signInWithGoogle();
-    else signOut();
-  });
+  document.getElementById('sign-out-btn').addEventListener('click', signOut);
 
   document.getElementById('stats-link-btn').addEventListener('click', openStatsScreen);
   document.getElementById('stats-back-btn').addEventListener('click', () => showScreen('setup-screen'));
