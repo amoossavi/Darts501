@@ -529,15 +529,17 @@ function onAuthChanged(user) {
       if (onlineToggle) onlineToggle.hidden = false;
       if (statsBtn) statsBtn.hidden = false;
 
-      const p1 = document.getElementById('player1-name');
-      if (p1 && !p1.value.trim() && user.displayName) p1.value = user.displayName;
-
       startHeartbeat();
       subscribeFriendships();
       subscribeChallenges();
       writeUserProfile(user).then(loadUserDoc).then(data => {
         applyUserChipName(data);
         if (data && data.theme) applyTheme(data.theme, false);
+        // Default the local-play Player 1 input to the username if set,
+        // falling back to the OAuth display name.
+        const p1 = document.getElementById('player1-name');
+        const preferredName = (data && data.username) || user.displayName || '';
+        if (p1 && !p1.value.trim() && preferredName) p1.value = preferredName;
         checkCurrentGame();
       });
     }
@@ -604,7 +606,7 @@ function applyUserChipName(data) {
   nameEl.textContent = username || currentUser.displayName || currentUser.email || 'Signed in';
 }
 
-const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
+const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
 const USERNAME_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 function openUsernameDialog() {
@@ -626,21 +628,29 @@ async function saveUsername() {
   const input = document.getElementById('username-input');
   const error = document.getElementById('username-error');
   const saveBtn = document.getElementById('username-save-btn');
-  const raw = (input.value || '').trim().toLowerCase();
+  const raw = (input.value || '').trim();
   error.textContent = '';
 
   if (!USERNAME_RE.test(raw)) {
-    error.textContent = 'Usernames must be 3–20 chars: a–z, 0–9, _';
+    error.textContent = 'Usernames must be 3–20 chars: A–Z, a–z, 0–9, _';
     return;
   }
 
+  // Firestore doc IDs are case-sensitive — claim by the lowercase form so
+  // uniqueness is case-insensitive. The user doc keeps the chosen casing.
+  const claimKey = raw.toLowerCase();
   const existing = currentUserDocCache || {};
+  const existingClaimKey = existing.username ? existing.username.toLowerCase() : null;
+
   if (existing.username === raw) {
     closeUsernameDialog();
     return;
   }
 
-  if (existing.usernameUpdatedAt && typeof existing.usernameUpdatedAt.toMillis === 'function') {
+  // Skip cooldown for a casing-only change of your own username — no claim
+  // moves, so the rate limit isn't protecting anything in that case.
+  const casingOnly = existingClaimKey === claimKey;
+  if (!casingOnly && existing.usernameUpdatedAt && typeof existing.usernameUpdatedAt.toMillis === 'function') {
     const elapsed = Date.now() - existing.usernameUpdatedAt.toMillis();
     if (elapsed < USERNAME_COOLDOWN_MS) {
       const hoursLeft = Math.ceil((USERNAME_COOLDOWN_MS - elapsed) / 3600000);
@@ -651,7 +661,7 @@ async function saveUsername() {
 
   saveBtn.disabled = true;
   try {
-    const claimRef = db.collection('usernames').doc(raw);
+    const claimRef = db.collection('usernames').doc(claimKey);
     const claimSnap = await claimRef.get();
     if (claimSnap.exists && claimSnap.data().uid !== currentUser.uid) {
       error.textContent = 'That username is taken.';
@@ -661,8 +671,8 @@ async function saveUsername() {
 
     await claimRef.set({ uid: currentUser.uid });
 
-    if (existing.username && existing.username !== raw) {
-      await db.collection('usernames').doc(existing.username).delete().catch(() => {});
+    if (existingClaimKey && existingClaimKey !== claimKey) {
+      await db.collection('usernames').doc(existingClaimKey).delete().catch(() => {});
     }
 
     await db.collection('users').doc(currentUser.uid).set({
@@ -1012,7 +1022,7 @@ function openMatchDetail(matchId) {
         <div class="friend-avatar-wrap">${oppPhoto}</div>
         <div>
           <div class="match-detail-vs-text">vs. <strong>${escapeHtml(opp.name || 'Unknown')}</strong></div>
-          <div class="match-detail-vs-meta">${formatMatchDate(m.endedAt)} · ${m.startingScore} · Best of ${m.bestOfSets}</div>
+          <div class="match-detail-vs-meta">${formatMatchDate(m.endedAt)} · ${m.startingScore} · ${formatMatchFormat(m.bestOfSets)}</div>
         </div>
       </div>
       <span class="match-detail-result ${won ? 'win' : 'loss'}">${won ? 'Won' : 'Lost'}</span>
@@ -1073,6 +1083,48 @@ function renderRecords(s) {
   `).join('');
 }
 
+// userStats is an incremental aggregate (mergeStats only sums/maxes forward).
+// If the matches collection diverges from it (e.g. seed matches deleted out of
+// band), this rebuild walks the user's current matches in chronological order
+// and overwrites the userStats doc with the resulting aggregate.
+async function recomputeUserStats() {
+  if (!currentUser || currentUser.isAnonymous || !db) return;
+  const btn = document.getElementById('recompute-stats-btn');
+  const status = document.getElementById('recompute-status');
+  if (!confirm('Rebuild Records from your current matches? This overwrites the stored totals.')) return;
+  btn.disabled = true;
+  status.textContent = 'Recomputing…';
+  try {
+    const snap = await db.collection('matches')
+      .where('participants', 'array-contains', currentUser.uid).get();
+    const matches = snap.docs.map(d => d.data())
+      .sort((a, b) => (a.endedAt || 0) - (b.endedAt || 0));
+    let agg = {};
+    for (const m of matches) {
+      const myIdx = m.players.findIndex(p => p.uid === currentUser.uid);
+      if (myIdx < 0) continue;
+      agg = mergeStats(agg, statsFromMatch(m, myIdx));
+    }
+    const ref = db.collection('userStats').doc(currentUser.uid);
+    if (matches.length === 0) {
+      await ref.delete();
+      document.getElementById('stats-body').hidden = true;
+      document.getElementById('stats-empty').hidden = false;
+      status.textContent = 'No matches — cleared.';
+    } else {
+      await ref.set(agg);
+      renderHeadlineStats(agg);
+      renderRecords(agg);
+      status.textContent = `Rebuilt from ${matches.length} match${matches.length === 1 ? '' : 'es'}.`;
+    }
+  } catch (err) {
+    console.warn('Recompute failed:', err);
+    status.textContent = 'Recompute failed — see console.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function renderHeadToHead(matches) {
   const me = currentUser.uid;
   const byOpponent = new Map();
@@ -1121,7 +1173,16 @@ function renderAverageChart(matches, stats) {
     const totalScore = validVisits.reduce((s, v) => s + v.score, 0);
     if (!player.matchDarts) continue;
     const avg = (totalScore / player.matchDarts) * 3;
-    points.push({ x: m.endedAt || 0, y: avg });
+    const oppIdx = myIdx === 0 ? 1 : 0;
+    const opp = m.players[oppIdx] || {};
+    points.push({
+      x: m.endedAt || 0,
+      y: avg,
+      oppName: opp.name || 'Unknown',
+      won: m.winnerIndex === myIdx,
+      matchId: m.id,
+      endedAt: m.endedAt || 0
+    });
   }
   if (points.length === 0) {
     wrap.innerHTML = '<div class="friends-empty">No completed matches yet.</div>';
@@ -1156,7 +1217,12 @@ function renderAverageChart(matches, stats) {
     tickLabels.push(`<text class="chart-label" x="${padL - 6}" y="${y + 3}" text-anchor="end">${value.toFixed(0)}</text>`);
   }
 
-  const pointEls = xy.map(p => `<circle class="chart-point" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3"></circle>`).join('');
+  // Visible markers + a fatter transparent hit-area so hovering doesn't need
+  // pixel-perfect aim (esp. on touch).
+  const pointEls = xy.map((p, i) => `
+    <circle class="chart-point" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3"></circle>
+    <circle class="chart-hit" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="12" data-idx="${i}"></circle>
+  `).join('');
 
   wrap.innerHTML = `
     <svg class="stats-chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">
@@ -1167,7 +1233,62 @@ function renderAverageChart(matches, stats) {
       <line class="chart-mean" x1="${padL}" y1="${meanY.toFixed(1)}" x2="${w - padR}" y2="${meanY.toFixed(1)}"></line>
       <path class="chart-line" d="${pathD}"></path>
       ${pointEls}
-    </svg>`;
+    </svg>
+    <div class="chart-tooltip" hidden></div>`;
+
+  attachChartInteractions(wrap, points);
+}
+
+function attachChartInteractions(wrap, points) {
+  const svg = wrap.querySelector('svg');
+  const tooltip = wrap.querySelector('.chart-tooltip');
+  if (!svg || !tooltip) return;
+
+  function showFor(circle) {
+    const idx = parseInt(circle.dataset.idx, 10);
+    const p = points[idx];
+    if (!p) return;
+    // Highlight the matching visible point.
+    svg.querySelectorAll('.chart-point.active').forEach(el => el.classList.remove('active'));
+    const visible = svg.querySelectorAll('.chart-point')[idx];
+    if (visible) visible.classList.add('active');
+
+    const result = p.won ? 'W' : 'L';
+    tooltip.innerHTML = `
+      <div class="chart-tt-row"><strong>${escapeHtml(p.oppName)}</strong> <span class="chart-tt-result ${p.won ? 'win' : 'loss'}">${result}</span></div>
+      <div class="chart-tt-row">3-dart avg: <strong>${p.y.toFixed(1)}</strong></div>
+      <div class="chart-tt-row chart-tt-date">${escapeHtml(formatMatchDate(p.endedAt))}</div>`;
+
+    const wrapRect = wrap.getBoundingClientRect();
+    const dotRect = circle.getBoundingClientRect();
+    const cx = dotRect.left + dotRect.width / 2 - wrapRect.left;
+    const cy = dotRect.top + dotRect.height / 2 - wrapRect.top;
+    tooltip.hidden = false;
+    // Clamp so the tooltip doesn't overflow the wrap horizontally.
+    const ttWidth = tooltip.offsetWidth;
+    const half = ttWidth / 2;
+    const clampedX = Math.max(half + 4, Math.min(wrapRect.width - half - 4, cx));
+    tooltip.style.left = `${clampedX}px`;
+    tooltip.style.top = `${cy}px`;
+  }
+
+  function hide() {
+    tooltip.hidden = true;
+    svg.querySelectorAll('.chart-point.active').forEach(el => el.classList.remove('active'));
+  }
+
+  svg.addEventListener('pointerover', (e) => {
+    const hit = e.target.closest('.chart-hit');
+    if (hit) showFor(hit);
+  });
+  svg.addEventListener('pointerleave', hide);
+  svg.addEventListener('click', (e) => {
+    const hit = e.target.closest('.chart-hit');
+    if (!hit) return;
+    const idx = parseInt(hit.dataset.idx, 10);
+    const p = points[idx];
+    if (p && p.matchId) openMatchDetail(p.matchId);
+  });
 }
 
 async function checkCurrentGame() {
@@ -1190,14 +1311,20 @@ async function checkCurrentGame() {
       setActiveGameRoom(null);
       return;
     }
-    const myName = currentUser.displayName || '';
-    const opponent = (data.game && data.game.players)
+    // Don't surface a "Resume" card for a room that hasn't started yet (e.g.
+    // host sent a challenge but the friend hasn't accepted). Hitting Resume on
+    // it would join the user as a guest into their own room and strand them
+    // on the "Waiting for host" overlay. Pending invitations live in the
+    // Challenges tab; this card is strictly for in-progress games.
+    if (!data.game) return;
+    const myUsername = (currentUserDocCache && currentUserDocCache.username) || '';
+    const myName = myUsername || currentUser.displayName || '';
+    const opponent = (data.game.players)
       ? (data.game.players.find(p => p.name !== myName) || data.game.players[1] || {})
       : {};
     document.getElementById('current-game-opponent').textContent = opponent.name || 'Opponent';
-    document.getElementById('current-game-meta').textContent = data.game
-      ? `${data.game.startingScore} • Best of ${data.game.bestOfSets}`
-      : 'Waiting for opponent';
+    document.getElementById('current-game-meta').textContent =
+      `${data.game.startingScore} • ${formatMatchFormat(data.game.bestOfSets)}`;
     const avatar = document.getElementById('current-game-avatar');
     if (opponent.photoURL) {
       avatar.src = opponent.photoURL;
@@ -1428,8 +1555,14 @@ function readSetupSettings() {
   };
 }
 
+function formatMatchFormat(bestOfSets) {
+  const n = parseInt(bestOfSets, 10) || 1;
+  // For long formats, "First to N" reads more naturally than "Best of 19".
+  return n >= 9 ? `First to ${Math.ceil(n / 2)}` : `Best of ${n}`;
+}
+
 function challengeMetaLine(c) {
-  return `${c.startingScore} • Best of ${c.bestOfSets}`;
+  return `${c.startingScore} • ${formatMatchFormat(c.bestOfSets)}`;
 }
 
 async function challengeFriend(pairId) {
@@ -1449,12 +1582,14 @@ async function challengeFriend(pairId) {
 
   try {
     const ref = db.collection('challenges').doc();
+    const myUsername = (currentUserDocCache && currentUserDocCache.username) || null;
     await ref.set({
       from: currentUser.uid,
       to: otherUid,
       participants: [currentUser.uid, otherUid],
       fromProfile: profileFromUser(currentUser),
       toProfile: { displayName: otherProfile.displayName || '', email: otherProfile.email || '', photoURL: otherProfile.photoURL || '' },
+      fromUsername: myUsername,
       status: 'pending',
       bestOfSets: settings.bestOfSets,
       startingScore: settings.startingScore,
@@ -1479,15 +1614,16 @@ function watchActiveChallenge(ref) {
     }
     const c = doc.data();
     if (c.status === 'accepted') {
-      const myName = currentUser.displayName || 'Player 1';
-      const theirName = (c.toProfile && c.toProfile.displayName) || 'Player 2';
+      const myUsername = (currentUserDocCache && currentUserDocCache.username) || null;
+      const myName = c.fromUsername || myUsername || currentUser.displayName || 'Player 1';
+      const theirName = c.toUsername || (c.toProfile && c.toProfile.displayName) || 'Player 2';
       const myPhoto = currentUser.photoURL || '';
       const theirPhoto = (c.toProfile && c.toProfile.photoURL) || '';
       detachActiveChallenge();
       ref.delete().catch(() => {});
       startGame(myName, theirName, c.bestOfSets, c.startingScore, myPhoto, theirPhoto, currentUser.uid, c.to);
     } else if (c.status === 'declined' || c.status === 'cancelled') {
-      const who = (c.toProfile && c.toProfile.displayName) || 'Friend';
+      const who = (c.toUsername) || (c.toProfile && c.toProfile.displayName) || 'Friend';
       showMessage(`${who} declined`);
       detachActiveChallenge();
       ref.delete().catch(() => {});
@@ -1505,7 +1641,8 @@ async function acceptChallenge(challengeId) {
     if (!snap.exists) { showMessage('Challenge no longer available'); return; }
     const c = snap.data();
     if (c.to !== currentUser.uid || c.status !== 'pending') return;
-    await ref.update({ status: 'accepted' });
+    const myUsername = (currentUserDocCache && currentUserDocCache.username) || null;
+    await ref.update({ status: 'accepted', toUsername: myUsername });
     await joinRoom(c.roomCode);
     setActiveGameRoom(c.roomCode);
   } catch (err) {
@@ -1710,13 +1847,16 @@ async function joinRoom(code) {
       return;
     }
 
-    // Check if room is stale (older than 4 hours)
+    // Stale-room check: prefer lastActivityAt (bumped on each sync) so long
+    // formats like First-to-10 can be paused and resumed without expiring.
+    // Falls back to createdAt for rooms written before this field existed.
     const data = doc.data();
-    if (data.createdAt) {
-      const ageMs = Date.now() - data.createdAt.toMillis();
-      if (ageMs > 4 * 60 * 60 * 1000) {
+    const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+    const referenceTs = data.lastActivityAt || data.createdAt;
+    if (referenceTs) {
+      const ageMs = Date.now() - referenceTs.toMillis();
+      if (ageMs > STALE_AFTER_MS) {
         showMessage('Room has expired');
-        // Clean up stale room
         db.collection('games').doc(code).delete().catch(() => {});
         return;
       }
@@ -1746,6 +1886,41 @@ async function joinRoom(code) {
   } catch (err) {
     showMessage('Failed to join room');
     console.error(err);
+  }
+}
+
+async function forceSyncFromFirestore() {
+  if (!isOnline || !roomCode || !db) return;
+  const btn = document.getElementById('sync-btn');
+  const original = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+  try {
+    const doc = await db.collection('games').doc(roomCode).get({ source: 'server' });
+    if (!doc.exists) {
+      showMessage('Room no longer exists');
+      return;
+    }
+    const data = doc.data();
+    if (!data || !data.game) {
+      showMessage('No game data yet');
+      return;
+    }
+    game = data.game;
+    if (game.gameOver) {
+      setActiveGameRoom(null);
+      showRoomCodeOnGameScreen();
+      showGameOver();
+    } else {
+      showScreen('game-screen');
+      updateGameScreenHeaders();
+      showRoomCodeOnGameScreen();
+      render();
+    }
+    if (btn) { btn.textContent = 'Synced'; setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 900); }
+  } catch (err) {
+    console.warn('Force sync failed:', err);
+    showMessage('Sync failed — check connection');
+    if (btn) { btn.textContent = original; btn.disabled = false; }
   }
 }
 
@@ -1806,7 +1981,10 @@ const MAX_SYNC_RETRIES = 3;
 function syncGameToFirestore() {
   if (!isOnline || !roomCode || !game) return;
   const gameData = JSON.parse(JSON.stringify(game));
-  db.collection('games').doc(roomCode).update({ game: gameData }).then(() => {
+  db.collection('games').doc(roomCode).update({
+    game: gameData,
+    lastActivityAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).then(() => {
     syncRetryCount = 0;
   }).catch(err => {
     console.error('Failed to sync game:', err);
@@ -1931,6 +2109,20 @@ function getPreviousPlayer() {
   return game.players[prev];
 }
 
+// Returns the local user's player index in the current game, or -1 if they
+// don't own a slot (local play, or spectator). Used to gate writes in online
+// mode so only the player whose turn it is can mutate the shared state.
+function getMySlot() {
+  if (!game || !currentUser) return -1;
+  return game.players.findIndex(p => p.uid && p.uid === currentUser.uid);
+}
+
+function isMyTurn() {
+  if (!isOnline) return true;
+  const slot = getMySlot();
+  return slot !== -1 && slot === game.currentPlayer;
+}
+
 function isBust(currentScore, thrown) {
   const remaining = currentScore - thrown;
   return remaining < 0 || remaining === 1;
@@ -1938,6 +2130,14 @@ function isBust(currentScore, thrown) {
 
 function submitScore(points) {
   if (game.gameOver) return;
+
+  // Turn-gate: in online play, only the active player writes. This prevents
+  // last-writer-wins races where the inactive client's write clobbers the
+  // active client's update of the shared game doc.
+  if (isOnline && !isMyTurn()) {
+    showMessage("It's not your turn");
+    return;
+  }
 
   if (points < 0 || points > 180) {
     showMessage('Score must be between 0 and 180');
@@ -2146,6 +2346,9 @@ function showScreen(screenId) {
 function render() {
   if (!game) return;
 
+  const syncBtn = document.getElementById('sync-btn');
+  if (syncBtn) syncBtn.style.display = isOnline ? '' : 'none';
+
   for (let i = 0; i < game.players.length; i++) {
     const p = game.players[i];
     const idx = i + 1;
@@ -2180,7 +2383,20 @@ function render() {
     }
   }
 
-  document.getElementById('turn-indicator').textContent = `${getCurrentPlayer().name}'s turn`;
+  const myTurn = isMyTurn();
+  document.getElementById('turn-indicator').textContent = (isOnline && !myTurn)
+    ? `Waiting for ${getCurrentPlayer().name}…`
+    : `${getCurrentPlayer().name}'s turn`;
+
+  const scoreInput = document.getElementById('score-input');
+  const submitBtn = document.getElementById('submit-btn');
+  const undoBtn = document.getElementById('undo-btn');
+  const lockInput = isOnline && !myTurn;
+  scoreInput.disabled = lockInput;
+  submitBtn.disabled = lockInput;
+  // Undo is already host-only online; also lock when not our turn so the
+  // inactive client doesn't trigger a write.
+  undoBtn.disabled = isOnline && (!isHost || !myTurn);
 
   renderVisitHistory();
 }
@@ -2335,6 +2551,8 @@ function init() {
     if (row) openMatchDetail(row.dataset.matchId);
   });
 
+  document.getElementById('recompute-stats-btn').addEventListener('click', recomputeUserStats);
+
   // Edit username
   document.getElementById('user-chip-name').addEventListener('click', openUsernameDialog);
   document.getElementById('username-cancel-btn').addEventListener('click', closeUsernameDialog);
@@ -2455,6 +2673,9 @@ function init() {
 
   // Undo button
   document.getElementById('undo-btn').addEventListener('click', undoLastThrow);
+
+  // Force-sync button (online only)
+  document.getElementById('sync-btn').addEventListener('click', forceSyncFromFirestore);
 
   // New game button (back to setup)
   document.getElementById('new-game-btn').addEventListener('click', () => {

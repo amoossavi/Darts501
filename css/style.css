@@ -1488,6 +1488,20 @@ button:focus-visible {
   padding: 10px 12px;
 }
 
+.stats-records-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.stats-records-status {
+  font-size: 0.85em;
+  color: var(--text-secondary, inherit);
+  opacity: 0.85;
+}
+
 .stats-h2h {
   display: flex;
   flex-direction: column;
@@ -1506,7 +1520,7 @@ button:focus-visible {
 
 .stats-chart-wrap {
   width: 100%;
-  overflow: hidden;
+  position: relative;
 }
 
 .stats-chart {
@@ -1546,7 +1560,49 @@ button:focus-visible {
   fill: var(--accent);
   stroke: var(--bg-card);
   stroke-width: 2;
+  transition: r 0.1s ease, stroke-width 0.1s ease;
 }
+
+.chart-point.active {
+  r: 5;
+  stroke-width: 3;
+}
+
+.chart-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.chart-tooltip {
+  position: absolute;
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 10px));
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  z-index: 5;
+}
+
+.chart-tt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.chart-tt-date {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  margin-top: 2px;
+}
+
+.chart-tt-result.win { color: var(--green, #00b894); font-weight: 600; }
+.chart-tt-result.loss { color: var(--accent); font-weight: 600; }
 
 .chart-label {
   fill: var(--text-dim);
