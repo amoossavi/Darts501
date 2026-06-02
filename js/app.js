@@ -709,10 +709,11 @@ function setActiveGameRoom(code) {
 // ============================================================
 
 let lastPersistedMatchSig = null;
+let lastPersistedSeriesSig = null;
 
 function buildMatchData() {
   const participants = game.players.map(p => p.uid).filter(Boolean);
-  return {
+  const data = {
     participants,
     bestOfSets: game.bestOfSets,
     startingScore: game.startingScore,
@@ -731,6 +732,10 @@ function buildMatchData() {
     })),
     legs: game.legHistory || []
   };
+  if (testSeries) {
+    data.testSeriesId = `${testSeries.startedAt}_${roomCode || 'local'}`;
+  }
+  return data;
 }
 
 function statsFromMatch(matchData, myIndex) {
@@ -808,6 +813,11 @@ function mergeStats(existing, delta) {
     merged.currentWinStreak = 0;
   }
 
+  if (delta.testSeriesPlayed) {
+    merged.testSeriesPlayed = (existing.testSeriesPlayed || 0) + (delta.testSeriesPlayed || 0);
+    merged.testSeriesWon = (existing.testSeriesWon || 0) + (delta.testSeriesWon || 0);
+  }
+
   merged.lastMatchAt = delta.lastMatchAt;
   return merged;
 }
@@ -850,6 +860,63 @@ async function persistFinishedMatch() {
     persistMatchDoc(matchData),
     persistOwnStats(matchData)
   ]);
+}
+
+async function persistTestSeries() {
+  if (!testSeries || !isSeriesOver()) return;
+  if (!db || !currentUser || currentUser.isAnonymous) return;
+  const seriesSig = `${testSeries.startedAt}_${roomCode || 'local'}`;
+  if (lastPersistedSeriesSig === seriesSig) return;
+  lastPersistedSeriesSig = seriesSig;
+  const s = testSeries;
+  const seriesWinner = s.matchWins[0] >= s.targetWins ? 0 : 1;
+  const seriesId = `${s.startedAt}_${roomCode || 'local'}`;
+  const participants = [s.playerInfo.uid1, s.playerInfo.uid2].filter(Boolean);
+  if (participants.length === 0) return;
+
+  const seriesData = {
+    participants,
+    players: [
+      { uid: s.playerInfo.uid1 || null, name: s.playerInfo.name1, photoURL: s.playerInfo.photoURL1 || '', matchWins: s.matchWins[0] },
+      { uid: s.playerInfo.uid2 || null, name: s.playerInfo.name2, photoURL: s.playerInfo.photoURL2 || '', matchWins: s.matchWins[1] }
+    ],
+    targetWins: s.targetWins,
+    matchesPlayed: s.matchesPlayed,
+    winnerIndex: seriesWinner,
+    startedAt: s.startedAt,
+    endedAt: Date.now(),
+    bestOfSets: s.playerInfo.bestOfSets,
+    startingScore: s.playerInfo.startingScore
+  };
+
+  try {
+    await db.collection('testSeries').doc(seriesId).set(seriesData, { merge: true });
+  } catch (err) {
+    console.warn('Test series doc write failed:', err);
+  }
+
+  await persistTestSeriesStats(seriesData);
+}
+
+async function persistTestSeriesStats(seriesData) {
+  if (!db || !currentUser || currentUser.isAnonymous) return;
+  const myIndex = seriesData.players.findIndex(p => p.uid === currentUser.uid);
+  if (myIndex < 0) return;
+  const won = seriesData.winnerIndex === myIndex ? 1 : 0;
+  const ref = db.collection('userStats').doc(currentUser.uid);
+  try {
+    await db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      const existing = snap.exists ? snap.data() : {};
+      tx.set(ref, {
+        ...existing,
+        testSeriesPlayed: (existing.testSeriesPlayed || 0) + 1,
+        testSeriesWon: (existing.testSeriesWon || 0) + won
+      });
+    });
+  } catch (err) {
+    console.warn('Test series stats update failed:', err);
+  }
 }
 
 // ============================================================
@@ -931,11 +998,12 @@ function renderMatchesList(matches) {
       : '<div class="friend-avatar friend-avatar-placeholder"></div>';
     const mySets = m.players[myIdx].sets;
     const oppSets = opp.sets || 0;
+    const seriesBadge = m.testSeriesId ? '<span class="match-row-series-badge">TS</span>' : '';
     return `
       <button class="match-row" data-match-id="${escapeHtml(m.id)}">
         <div class="friend-avatar-wrap">${photo}</div>
         <div class="match-row-info">
-          <div class="match-row-opponent">vs. ${escapeHtml(opp.name || 'Unknown')}</div>
+          <div class="match-row-opponent">vs. ${escapeHtml(opp.name || 'Unknown')}${seriesBadge}</div>
           <div class="match-row-date">${escapeHtml(formatMatchDate(m.endedAt))}</div>
         </div>
         <div class="match-row-score">${mySets}–${oppSets}</div>
@@ -1055,6 +1123,9 @@ function renderHeadlineStats(s) {
     { label: '180s', value: fmt(s.count180) },
     { label: 'Checkout %', value: fmt(checkoutPct, 0) + '%' }
   ];
+  if (s.testSeriesPlayed) {
+    tiles.push({ label: 'Test Series', value: fmt(s.testSeriesPlayed), sub: `${fmt(s.testSeriesWon || 0)}W / ${fmt((s.testSeriesPlayed || 0) - (s.testSeriesWon || 0))}L` });
+  }
   document.getElementById('stats-headline').innerHTML = tiles.map(t => `
     <div class="stats-tile">
       <div class="stats-tile-label">${escapeHtml(t.label)}</div>
@@ -1105,8 +1176,22 @@ async function recomputeUserStats() {
       if (myIdx < 0) continue;
       agg = mergeStats(agg, statsFromMatch(m, myIdx));
     }
+
+    const seriesSnap = await db.collection('testSeries')
+      .where('participants', 'array-contains', currentUser.uid).get();
+    let seriesPlayed = 0, seriesWon = 0;
+    for (const doc of seriesSnap.docs) {
+      const s = doc.data();
+      const myIdx = s.players.findIndex(p => p.uid === currentUser.uid);
+      if (myIdx < 0) continue;
+      seriesPlayed++;
+      if (s.winnerIndex === myIdx) seriesWon++;
+    }
+    agg.testSeriesPlayed = seriesPlayed;
+    agg.testSeriesWon = seriesWon;
+
     const ref = db.collection('userStats').doc(currentUser.uid);
-    if (matches.length === 0) {
+    if (matches.length === 0 && seriesPlayed === 0) {
       await ref.delete();
       document.getElementById('stats-body').hidden = true;
       document.getElementById('stats-empty').hidden = false;
@@ -1115,7 +1200,7 @@ async function recomputeUserStats() {
       await ref.set(agg);
       renderHeadlineStats(agg);
       renderRecords(agg);
-      status.textContent = `Rebuilt from ${matches.length} match${matches.length === 1 ? '' : 'es'}.`;
+      status.textContent = `Rebuilt from ${matches.length} match${matches.length === 1 ? '' : 'es'} and ${seriesPlayed} series.`;
     }
   } catch (err) {
     console.warn('Recompute failed:', err);
@@ -1551,7 +1636,8 @@ function detachActiveChallenge() {
 function readSetupSettings() {
   return {
     bestOfSets: parseInt(document.querySelector('#sets-selector .set-option.active').dataset.sets, 10),
-    startingScore: parseInt(document.querySelector('#score-selector .set-option.active').dataset.score, 10)
+    startingScore: parseInt(document.querySelector('#score-selector .set-option.active').dataset.score, 10),
+    isTestSeries: document.getElementById('test-series-check').checked
   };
 }
 
@@ -1562,7 +1648,8 @@ function formatMatchFormat(bestOfSets) {
 }
 
 function challengeMetaLine(c) {
-  return `${c.startingScore} • ${formatMatchFormat(c.bestOfSets)}`;
+  const base = `${c.startingScore} • ${formatMatchFormat(c.bestOfSets)}`;
+  return c.isTestSeries ? `${base} • Test Series` : base;
 }
 
 async function challengeFriend(pairId) {
@@ -1593,6 +1680,7 @@ async function challengeFriend(pairId) {
       status: 'pending',
       bestOfSets: settings.bestOfSets,
       startingScore: settings.startingScore,
+      isTestSeries: settings.isTestSeries || false,
       roomCode: roomCode,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -1621,7 +1709,11 @@ function watchActiveChallenge(ref) {
       const theirPhoto = (c.toProfile && c.toProfile.photoURL) || '';
       detachActiveChallenge();
       ref.delete().catch(() => {});
-      startGame(myName, theirName, c.bestOfSets, c.startingScore, myPhoto, theirPhoto, currentUser.uid, c.to);
+      if (c.isTestSeries) {
+        startTestSeries(myName, theirName, c.bestOfSets, c.startingScore, myPhoto, theirPhoto, currentUser.uid, c.to);
+      } else {
+        startGame(myName, theirName, c.bestOfSets, c.startingScore, myPhoto, theirPhoto, currentUser.uid, c.to);
+      }
     } else if (c.status === 'declined' || c.status === 'cancelled') {
       const who = (c.toUsername) || (c.toProfile && c.toProfile.displayName) || 'Friend';
       showMessage(`${who} declined`);
@@ -1936,6 +2028,9 @@ function subscribeToGame() {
     if (!data || !data.game) return;
 
     game = data.game;
+    if (data.testSeries) {
+      testSeries = data.testSeries;
+    }
     document.getElementById('waiting-overlay').style.display = 'none';
 
     if (game.lastEvent && game.lastEvent.id !== lastProcessedEventId) {
@@ -1944,7 +2039,14 @@ function subscribeToGame() {
     }
 
     if (game.gameOver) {
-      setActiveGameRoom(null);
+      if (testSeries && !isSeriesOver()) {
+        // Don't clear room during an active series
+      } else {
+        setActiveGameRoom(null);
+        if (testSeries && isSeriesOver()) {
+          persistTestSeries().catch(err => console.warn('Series persist failed:', err));
+        }
+      }
       persistFinishedMatch().catch(err => console.warn('Match persist failed:', err));
       showRoomCodeOnGameScreen();
       showGameOver();
@@ -1981,10 +2083,16 @@ const MAX_SYNC_RETRIES = 3;
 function syncGameToFirestore() {
   if (!isOnline || !roomCode || !game) return;
   const gameData = JSON.parse(JSON.stringify(game));
-  db.collection('games').doc(roomCode).update({
+  const update = {
     game: gameData,
     lastActivityAt: firebase.firestore.FieldValue.serverTimestamp()
-  }).then(() => {
+  };
+  if (testSeries) {
+    update.testSeries = JSON.parse(JSON.stringify(testSeries));
+  } else {
+    update.testSeries = firebase.firestore.FieldValue.delete();
+  }
+  db.collection('games').doc(roomCode).update(update).then(() => {
     syncRetryCount = 0;
   }).catch(err => {
     console.error('Failed to sync game:', err);
@@ -2010,6 +2118,7 @@ function leaveRoom() {
   roomCode = null;
   isOnline = false;
   isHost = false;
+  testSeries = null;
   lastProcessedEventId = null;
   syncRetryCount = 0;
   document.getElementById('waiting-overlay').style.display = 'none';
@@ -2019,6 +2128,38 @@ function leaveRoom() {
 
 // Game state
 let game = null;
+let testSeries = null;
+
+function startTestSeries(name1, name2, bestOfSets, startingScore, photoURL1, photoURL2, uid1, uid2) {
+  testSeries = {
+    targetWins: 10,
+    matchWins: [0, 0],
+    matchesPlayed: 0,
+    startedAt: Date.now(),
+    playerInfo: { name1, name2, bestOfSets, startingScore, photoURL1, photoURL2, uid1, uid2 }
+  };
+  startGame(name1, name2, bestOfSets, startingScore, photoURL1, photoURL2, uid1, uid2);
+}
+
+function continueTestSeries() {
+  if (!testSeries) return;
+  const p = testSeries.playerInfo;
+  startGame(p.name1, p.name2, p.bestOfSets, p.startingScore, p.photoURL1, p.photoURL2, p.uid1, p.uid2);
+}
+
+function isSeriesOver() {
+  if (!testSeries) return false;
+  return testSeries.matchWins[0] >= testSeries.targetWins || testSeries.matchWins[1] >= testSeries.targetWins;
+}
+
+function abandonTestSeries() {
+  testSeries = null;
+  if (isOnline) {
+    leaveRoom();
+  } else {
+    showScreen('setup-screen');
+  }
+}
 
 function createPlayer(name, startingScore, photoURL, uid) {
   return {
@@ -2232,8 +2373,20 @@ function processCheckout(dartsUsed) {
       game.endedAt = Date.now();
       fireEvent({ id: Date.now(), type: 'matchWon', playerName: player.name });
       syncGameToFirestore();
-      setActiveGameRoom(null);
-      persistFinishedMatch().catch(err => console.warn('Match persist failed:', err));
+
+      if (testSeries) {
+        testSeries.matchWins[winnerIndex]++;
+        testSeries.matchesPlayed++;
+        persistFinishedMatch().catch(err => console.warn('Match persist failed:', err));
+        if (isSeriesOver()) {
+          setActiveGameRoom(null);
+          persistTestSeries().catch(err => console.warn('Series persist failed:', err));
+        }
+      } else {
+        setActiveGameRoom(null);
+        persistFinishedMatch().catch(err => console.warn('Match persist failed:', err));
+      }
+
       showGameOver();
       return;
     }
@@ -2349,6 +2502,15 @@ function render() {
   const syncBtn = document.getElementById('sync-btn');
   if (syncBtn) syncBtn.style.display = isOnline ? '' : 'none';
 
+  const seriesBoard = document.getElementById('series-scoreboard');
+  if (testSeries) {
+    seriesBoard.style.display = '';
+    document.getElementById('series-score').textContent =
+      `${testSeries.matchWins[0]} – ${testSeries.matchWins[1]}`;
+  } else {
+    seriesBoard.style.display = 'none';
+  }
+
   for (let i = 0; i < game.players.length; i++) {
     const p = game.players[i];
     const idx = i + 1;
@@ -2451,6 +2613,50 @@ function showGameOver() {
     document.getElementById(`go-p${idx}-sets`).textContent = p.sets;
     document.getElementById(`go-p${idx}-average`).textContent = calculateAverage(p).toFixed(1);
     document.getElementById(`go-p${idx}-highest`).textContent = getHighestVisit(p);
+  }
+
+  const banner = document.getElementById('series-gameover-banner');
+  const nextBtn = document.getElementById('next-match-btn');
+  const rematchBtn = document.getElementById('rematch-btn');
+  const rematchSeriesBtn = document.getElementById('rematch-series-btn');
+  const abandonBtn = document.getElementById('abandon-series-btn');
+  const newGameBtn = document.getElementById('new-game-btn');
+  const winnerTitle = document.getElementById('winner-title');
+
+  if (testSeries) {
+    const s = testSeries;
+    banner.style.display = '';
+    document.getElementById('series-gameover-score').textContent =
+      `${s.matchWins[0]} – ${s.matchWins[1]}`;
+
+    if (isSeriesOver()) {
+      const seriesWinner = s.matchWins[0] >= s.targetWins ? 0 : 1;
+      winnerTitle.textContent = 'Series Winner';
+      document.getElementById('winner-name').textContent = game.players[seriesWinner].name;
+      document.getElementById('series-gameover-status').textContent = 'Series Complete';
+      nextBtn.style.display = 'none';
+      rematchBtn.style.display = 'none';
+      rematchSeriesBtn.style.display = '';
+      abandonBtn.style.display = 'none';
+      newGameBtn.style.display = '';
+    } else {
+      winnerTitle.textContent = `Match ${s.matchesPlayed} Winner`;
+      document.getElementById('series-gameover-status').textContent =
+        `First to ${s.targetWins}`;
+      nextBtn.style.display = '';
+      rematchBtn.style.display = 'none';
+      rematchSeriesBtn.style.display = 'none';
+      abandonBtn.style.display = '';
+      newGameBtn.style.display = 'none';
+    }
+  } else {
+    banner.style.display = 'none';
+    winnerTitle.textContent = 'Winner';
+    nextBtn.style.display = 'none';
+    rematchBtn.style.display = '';
+    rematchSeriesBtn.style.display = 'none';
+    abandonBtn.style.display = 'none';
+    newGameBtn.style.display = '';
   }
 
   showScreen('gameover-screen');
@@ -2627,7 +2833,12 @@ function init() {
     }
     const bestOfSets = parseInt(document.querySelector('#sets-selector .set-option.active').dataset.sets, 10);
     const startingScore = parseInt(document.querySelector('#score-selector .set-option.active').dataset.score, 10);
-    startGame(name1, name2, bestOfSets, startingScore);
+    const isSeries = document.getElementById('test-series-check').checked;
+    if (isSeries) {
+      startTestSeries(name1, name2, bestOfSets, startingScore);
+    } else {
+      startGame(name1, name2, bestOfSets, startingScore);
+    }
   });
 
   // Submit score
@@ -2680,6 +2891,7 @@ function init() {
   // New game button (back to setup)
   document.getElementById('new-game-btn').addEventListener('click', () => {
     game = null;
+    testSeries = null;
     if (isOnline) {
       leaveRoom();
     } else {
@@ -2691,6 +2903,22 @@ function init() {
   document.getElementById('rematch-btn').addEventListener('click', () => {
     if (game) {
       startGame(game.players[0].name, game.players[1].name, game.bestOfSets, game.startingScore, game.players[0].photoURL, game.players[1].photoURL, game.players[0].uid, game.players[1].uid);
+    }
+  });
+
+  // Test series buttons
+  document.getElementById('next-match-btn').addEventListener('click', () => {
+    if (testSeries && !isSeriesOver()) continueTestSeries();
+  });
+
+  document.getElementById('abandon-series-btn').addEventListener('click', () => {
+    if (testSeries) abandonTestSeries();
+  });
+
+  document.getElementById('rematch-series-btn').addEventListener('click', () => {
+    if (testSeries) {
+      const p = testSeries.playerInfo;
+      startTestSeries(p.name1, p.name2, p.bestOfSets, p.startingScore, p.photoURL1, p.photoURL2, p.uid1, p.uid2);
     }
   });
 

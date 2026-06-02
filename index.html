@@ -107,6 +107,13 @@
           <button class="set-option" data-sets="19" role="radio" aria-checked="false">FT10</button>
         </div>
       </div>
+      <div class="input-group" id="test-series-group">
+        <label class="test-series-toggle">
+          <input type="checkbox" id="test-series-check">
+          <span class="test-series-slider"></span>
+          <span class="test-series-text">Test Series (First to 10)</span>
+        </label>
+      </div>
     </div>
 
     <div class="setup-card" id="local-play-card" hidden>
@@ -269,6 +276,10 @@
 
   <!-- ==================== Game Screen ==================== -->
   <div id="game-screen" class="screen">
+    <div id="series-scoreboard" class="series-scoreboard" style="display:none">
+      <span class="series-label">Test Series</span>
+      <span class="series-score" id="series-score">0 – 0</span>
+    </div>
     <div id="game-room-info" class="game-room-info" style="display:none">
       Room: <strong id="game-room-code"></strong>
     </div>
@@ -346,9 +357,13 @@
 
   <!-- ==================== Game Over Screen ==================== -->
   <div id="gameover-screen" class="screen">
+    <div id="series-gameover-banner" class="series-gameover-banner" style="display:none">
+      <div class="series-gameover-score" id="series-gameover-score">0 – 0</div>
+      <div class="series-gameover-status" id="series-gameover-status"></div>
+    </div>
     <div class="gameover-card">
       <div class="trophy" aria-hidden="true">&#127942;</div>
-      <div class="winner-title">Winner</div>
+      <div class="winner-title" id="winner-title">Winner</div>
       <div id="winner-name" aria-live="polite"></div>
     </div>
 
@@ -396,7 +411,10 @@
     </div>
 
     <div class="gameover-buttons">
+      <button id="next-match-btn" class="btn btn-primary" style="display:none">Next Match</button>
       <button id="rematch-btn" class="btn btn-primary">Rematch</button>
+      <button id="rematch-series-btn" class="btn btn-primary" style="display:none">Rematch Series</button>
+      <button id="abandon-series-btn" class="btn btn-secondary" style="display:none">Abandon Series</button>
       <button id="new-game-btn" class="btn btn-secondary">New Game</button>
     </div>
   </div>
