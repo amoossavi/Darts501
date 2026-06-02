@@ -2200,11 +2200,22 @@ function startGame(name1, name2, bestOfSets, startingScore, photoURL1, photoURL2
   document.getElementById('bullup-overlay').style.display = '';
 }
 
+let bullUpMode = 'match-start';
+
 function completeBullUp(playerIndex) {
+  document.getElementById('bullup-overlay').style.display = 'none';
+
+  if (bullUpMode === 'between-sets') {
+    game.legStartingPlayer = playerIndex;
+    game.currentPlayer = playerIndex;
+    syncGameToFirestore();
+    startNewLeg(true);
+    bullUpMode = 'match-start';
+    return;
+  }
+
   game.currentPlayer = playerIndex;
   game.legStartingPlayer = playerIndex;
-
-  document.getElementById('bullup-overlay').style.display = 'none';
 
   showScreen('game-screen');
   document.getElementById('hist-p1-name').textContent = game.players[0].name;
@@ -2222,7 +2233,14 @@ function completeBullUp(playerIndex) {
   focusScoreInput();
 }
 
-function startNewLeg() {
+function showBetweenSetsBullUp() {
+  bullUpMode = 'between-sets';
+  document.getElementById('bullup-p1').textContent = game.players[0].name;
+  document.getElementById('bullup-p2').textContent = game.players[1].name;
+  document.getElementById('bullup-overlay').style.display = '';
+}
+
+function startNewLeg(skipAlternate) {
   // Accumulate match stats before resetting leg
   for (const p of game.players) {
     p.matchDarts += p.darts;
@@ -2232,9 +2250,10 @@ function startNewLeg() {
     p.visits = [];
   }
 
-  // Alternate who throws first
-  game.legStartingPlayer = (game.legStartingPlayer + 1) % game.players.length;
-  game.currentPlayer = game.legStartingPlayer;
+  if (!skipAlternate) {
+    game.legStartingPlayer = (game.legStartingPlayer + 1) % game.players.length;
+    game.currentPlayer = game.legStartingPlayer;
+  }
 
   render();
   syncGameToFirestore();
@@ -2392,6 +2411,13 @@ function processCheckout(dartsUsed) {
     }
 
     fireEvent({ id: Date.now(), type: 'setWon', playerName: player.name });
+
+    if (testSeries) {
+      render();
+      syncGameToFirestore();
+      setTimeout(() => showBetweenSetsBullUp(), 2000);
+      return;
+    }
   } else {
     fireEvent({ id: Date.now(), type: 'legWon', playerName: player.name });
   }
