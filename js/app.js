@@ -2554,8 +2554,10 @@ function render() {
   const submitBtn = document.getElementById('submit-btn');
   const undoBtn = document.getElementById('undo-btn');
   const lockInput = isOnline && !myTurn;
+  const wasLocked = scoreInput.disabled;
   scoreInput.disabled = lockInput;
   submitBtn.disabled = lockInput;
+  if (wasLocked && !lockInput) focusScoreInput();
   // Undo is already host-only online; also lock when not our turn so the
   // inactive client doesn't trigger a write.
   undoBtn.disabled = isOnline && (!isHost || !myTurn);
