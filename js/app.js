@@ -1943,17 +1943,6 @@ async function joinRoom(code) {
     // formats like First-to-10 can be paused and resumed without expiring.
     // Falls back to createdAt for rooms written before this field existed.
     const data = doc.data();
-    const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
-    const referenceTs = data.lastActivityAt || data.createdAt;
-    if (referenceTs) {
-      const ageMs = Date.now() - referenceTs.toMillis();
-      if (ageMs > STALE_AFTER_MS) {
-        showMessage('Room has expired');
-        db.collection('games').doc(code).delete().catch(() => {});
-        return;
-      }
-    }
-
     roomCode = code;
     isHost = false;
     isOnline = true;
@@ -2468,6 +2457,82 @@ function calculateAverage(player) {
   return (scored / totalDarts) * 3;
 }
 
+function calculateLegAverage(player) {
+  if (player.darts === 0) return 0;
+  const scored = player.visits
+    .filter(v => !v.busted)
+    .reduce((sum, v) => sum + v.score, 0);
+  return (scored / player.darts) * 3;
+}
+
+function calculateSetAverage(playerIndex) {
+  const history = game.legHistory || [];
+  let currentSetLegs = [];
+  let wins = [0, 0];
+
+  for (const leg of history) {
+    wins[leg.winner]++;
+    currentSetLegs.push(leg);
+    if (wins[0] >= 2 || wins[1] >= 2) {
+      currentSetLegs = [];
+      wins = [0, 0];
+    }
+  }
+
+  const player = game.players[playerIndex];
+  let totalDarts = player.darts;
+  let totalScored = player.visits
+    .filter(v => !v.busted)
+    .reduce((sum, v) => sum + v.score, 0);
+
+  for (const leg of currentSetLegs) {
+    totalDarts += leg.darts[playerIndex];
+    totalScored += leg.visits[playerIndex]
+      .filter(v => !v.busted)
+      .reduce((sum, v) => sum + v.score, 0);
+  }
+
+  if (totalDarts === 0) return 0;
+  return (totalScored / totalDarts) * 3;
+}
+
+function getLastLegAverage(playerIndex) {
+  const history = game.legHistory || [];
+  if (history.length === 0) return 0;
+  const lastLeg = history[history.length - 1];
+  const visits = lastLeg.visits[playerIndex] || [];
+  const darts = lastLeg.darts[playerIndex] || 0;
+  if (darts === 0) return 0;
+  return (visits.filter(v => !v.busted).reduce((s, v) => s + v.score, 0) / darts) * 3;
+}
+
+function getLastSetAverage(playerIndex) {
+  const history = game.legHistory || [];
+  let currentSetLegs = [];
+  let lastSetLegs = [];
+  let wins = [0, 0];
+  for (const leg of history) {
+    wins[leg.winner]++;
+    currentSetLegs.push(leg);
+    if (wins[0] >= 2 || wins[1] >= 2) {
+      lastSetLegs = currentSetLegs.slice();
+      currentSetLegs = [];
+      wins = [0, 0];
+    }
+  }
+  const setLegs = currentSetLegs.length > 0 ? currentSetLegs : lastSetLegs;
+  let totalDarts = 0;
+  let totalScored = 0;
+  for (const leg of setLegs) {
+    totalDarts += leg.darts[playerIndex] || 0;
+    totalScored += (leg.visits[playerIndex] || [])
+      .filter(v => !v.busted)
+      .reduce((s, v) => s + v.score, 0);
+  }
+  if (totalDarts === 0) return 0;
+  return (totalScored / totalDarts) * 3;
+}
+
 function getHighestVisit(player) {
   const allVisits = player.matchVisits.concat(player.visits);
   const valid = allVisits.filter(v => !v.busted);
@@ -2557,6 +2622,8 @@ function render() {
     document.getElementById(`p${idx}-legs`).textContent = p.legs;
     document.getElementById(`p${idx}-score`).textContent = p.score;
     document.getElementById(`p${idx}-darts`).textContent = p.matchDarts + p.darts;
+    document.getElementById(`p${idx}-leg-avg`).textContent = calculateLegAverage(p).toFixed(1);
+    document.getElementById(`p${idx}-set-avg`).textContent = calculateSetAverage(i).toFixed(1);
     document.getElementById(`p${idx}-average`).textContent = calculateAverage(p).toFixed(1);
     document.getElementById(`p${idx}-highest`).textContent = getHighestVisit(p);
 
@@ -2639,6 +2706,8 @@ function showGameOver() {
     document.getElementById(`go-p${idx}-name`).textContent = p.name;
     document.getElementById(`go-p${idx}-darts`).textContent = p.matchDarts;
     document.getElementById(`go-p${idx}-sets`).textContent = p.sets;
+    document.getElementById(`go-p${idx}-leg-avg`).textContent = getLastLegAverage(i).toFixed(1);
+    document.getElementById(`go-p${idx}-set-avg`).textContent = getLastSetAverage(i).toFixed(1);
     document.getElementById(`go-p${idx}-average`).textContent = calculateAverage(p).toFixed(1);
     document.getElementById(`go-p${idx}-highest`).textContent = getHighestVisit(p);
   }
