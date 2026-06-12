@@ -2651,9 +2651,7 @@ function render() {
   scoreInput.disabled = lockInput;
   submitBtn.disabled = lockInput;
   if (wasLocked && !lockInput) focusScoreInput();
-  // Undo is already host-only online; also lock when not our turn so the
-  // inactive client doesn't trigger a write.
-  undoBtn.disabled = isOnline && (!isHost || !myTurn);
+  undoBtn.disabled = isOnline && !isHost;
 
   renderVisitHistory();
 }
