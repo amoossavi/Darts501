@@ -1637,7 +1637,7 @@ function readSetupSettings() {
   return {
     bestOfSets: parseInt(document.querySelector('#sets-selector .set-option.active').dataset.sets, 10),
     startingScore: parseInt(document.querySelector('#score-selector .set-option.active').dataset.score, 10),
-    isTestSeries: document.getElementById('test-series-check').checked
+    isTestSeries: document.querySelector('#sets-selector .set-option.active').dataset.series === 'true'
   };
 }
 
@@ -2320,6 +2320,31 @@ function submitScore(points) {
     return;
   }
 
+  if (points === 180 && testSeries) {
+    const playerIndex = game.currentPlayer;
+    const bonus = Math.min(3, testSeries.targetWins - testSeries.matchWins[playerIndex]);
+    testSeries.matchWins[playerIndex] += bonus;
+    showMessage(`180! +${bonus} match win${bonus !== 1 ? 's' : ''}`);
+
+    if (isSeriesOver()) {
+      for (const p of game.players) {
+        p.matchDarts += p.darts;
+        p.matchVisits = p.matchVisits.concat(p.visits);
+      }
+      game.gameOver = true;
+      game.winner = playerIndex;
+      game.endedAt = Date.now();
+      fireEvent({ id: Date.now(), type: 'matchWon', playerName: game.players[playerIndex].name });
+      testSeries.matchesPlayed++;
+      persistFinishedMatch().catch(err => console.warn('Match persist failed:', err));
+      setActiveGameRoom(null);
+      persistTestSeries().catch(err => console.warn('Series persist failed:', err));
+      syncGameToFirestore();
+      showGameOver();
+      return;
+    }
+  }
+
   // Normal score — include checkout info for next player
   const nextPlayerIndex = (game.currentPlayer + 1) % game.players.length;
   const nextPlayer = game.players[nextPlayerIndex];
@@ -2926,10 +2951,10 @@ function init() {
       showMessage('Enter a name for both players');
       return;
     }
-    const bestOfSets = parseInt(document.querySelector('#sets-selector .set-option.active').dataset.sets, 10);
+    const activeSetBtn = document.querySelector('#sets-selector .set-option.active');
+    const bestOfSets = parseInt(activeSetBtn.dataset.sets, 10);
     const startingScore = parseInt(document.querySelector('#score-selector .set-option.active').dataset.score, 10);
-    const isSeries = document.getElementById('test-series-check').checked;
-    if (isSeries) {
+    if (activeSetBtn.dataset.series === 'true') {
       startTestSeries(name1, name2, bestOfSets, startingScore);
     } else {
       startGame(name1, name2, bestOfSets, startingScore);
