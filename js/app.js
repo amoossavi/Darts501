@@ -96,7 +96,7 @@ const CHECKOUTS = {
   114: 'T20 S14 D20',
   113: 'T20 S13 D20',
   112: 'T20 S12 D20',
-  111: 'T20 S19 D17',
+  111: 'T20 S19 D16',
   110: 'T20 S10 D20',
   109: 'T20 S9 D20',
   108: 'T20 S16 D16',
@@ -2121,7 +2121,8 @@ let testSeries = null;
 
 function startTestSeries(name1, name2, bestOfSets, startingScore, photoURL1, photoURL2, uid1, uid2) {
   testSeries = {
-    targetWins: 10,
+    // First to N sets; N derived from the format (e.g. "best of 19" → first to 10).
+    targetWins: Math.ceil((bestOfSets || 19) / 2),
     matchWins: [0, 0],
     matchesPlayed: 0,
     startedAt: Date.now(),
@@ -2324,7 +2325,8 @@ function submitScore(points) {
     const playerIndex = game.currentPlayer;
     const bonus = Math.min(3, testSeries.targetWins - testSeries.matchWins[playerIndex]);
     testSeries.matchWins[playerIndex] += bonus;
-    showMessage(`180! +${bonus} match win${bonus !== 1 ? 's' : ''}`);
+    game.players[playerIndex].sets += bonus;
+    showMessage(`180! +${bonus} set${bonus !== 1 ? 's' : ''}`);
 
     if (isSeriesOver()) {
       for (const p of game.players) {
@@ -2390,12 +2392,45 @@ function processCheckout(dartsUsed) {
   const setsToWin = Math.ceil(game.bestOfSets / 2);
 
   if (player.legs >= 2) {
+    // Set won (best of 3 legs — first to 2).
     player.sets++;
     player.legs = 0;
     for (const p of game.players) {
       if (p !== player) p.legs = 0;
     }
 
+    if (testSeries) {
+      // A test series is "first to targetWins sets" — one continuous game with
+      // no intermediate "match" layer. Each set won counts toward the target.
+      testSeries.matchWins[winnerIndex]++;
+
+      if (isSeriesOver()) {
+        for (const p of game.players) {
+          p.matchDarts += p.darts;
+          p.matchVisits = p.matchVisits.concat(p.visits);
+        }
+        game.gameOver = true;
+        game.winner = winnerIndex;
+        game.endedAt = Date.now();
+        testSeries.matchesPlayed++;
+        fireEvent({ id: Date.now(), type: 'matchWon', playerName: player.name });
+        setActiveGameRoom(null);
+        persistFinishedMatch().catch(err => console.warn('Match persist failed:', err));
+        persistTestSeries().catch(err => console.warn('Series persist failed:', err));
+        syncGameToFirestore();
+        showGameOver();
+        return;
+      }
+
+      // Set won but the series continues — bull up for the next set.
+      fireEvent({ id: Date.now(), type: 'setWon', playerName: player.name });
+      render();
+      syncGameToFirestore();
+      setTimeout(() => showBetweenSetsBullUp(), 2000);
+      return;
+    }
+
+    // Non-series game: the match ends at best-of-N sets.
     if (player.sets >= setsToWin) {
       for (const p of game.players) {
         p.matchDarts += p.darts;
@@ -2406,32 +2441,13 @@ function processCheckout(dartsUsed) {
       game.endedAt = Date.now();
       fireEvent({ id: Date.now(), type: 'matchWon', playerName: player.name });
       syncGameToFirestore();
-
-      if (testSeries) {
-        testSeries.matchWins[winnerIndex]++;
-        testSeries.matchesPlayed++;
-        persistFinishedMatch().catch(err => console.warn('Match persist failed:', err));
-        if (isSeriesOver()) {
-          setActiveGameRoom(null);
-          persistTestSeries().catch(err => console.warn('Series persist failed:', err));
-        }
-      } else {
-        setActiveGameRoom(null);
-        persistFinishedMatch().catch(err => console.warn('Match persist failed:', err));
-      }
-
+      setActiveGameRoom(null);
+      persistFinishedMatch().catch(err => console.warn('Match persist failed:', err));
       showGameOver();
       return;
     }
 
     fireEvent({ id: Date.now(), type: 'setWon', playerName: player.name });
-
-    if (testSeries) {
-      render();
-      syncGameToFirestore();
-      setTimeout(() => showBetweenSetsBullUp(), 2000);
-      return;
-    }
   } else {
     fireEvent({ id: Date.now(), type: 'legWon', playerName: player.name });
   }
